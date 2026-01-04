@@ -24,18 +24,18 @@ export class InputHandler {
         });
     }
 
+    private updateMousePosition(clientX: number, clientY: number) {
+        const scaleX = this.canvas.width / this.canvasRect.width;
+        const scaleY = this.canvas.height / this.canvasRect.height;
+        this.mouse.x = (clientX - this.canvasRect.left) * scaleX;
+        this.mouse.y = (clientY - this.canvasRect.top) * scaleY;
+    }
+
     private setupListeners() {
         window.addEventListener('keydown', (e) => this.keys.add(e.code));
         window.addEventListener('keyup', (e) => this.keys.delete(e.code));
 
-        const updateMousePosition = (clientX: number, clientY: number) => {
-            const scaleX = this.canvas.width / this.canvasRect.width;
-            const scaleY = this.canvas.height / this.canvasRect.height;
-            this.mouse.x = (clientX - this.canvasRect.left) * scaleX;
-            this.mouse.y = (clientY - this.canvasRect.top) * scaleY;
-        };
-
-        this.canvas.addEventListener('mousemove', (e) => updateMousePosition(e.clientX, e.clientY));
+        this.canvas.addEventListener('mousemove', (e) => this.updateMousePosition(e.clientX, e.clientY));
         this.canvas.addEventListener('mousedown', () => (this.mouse.isDown = true));
         window.addEventListener('mouseup', () => (this.mouse.isDown = false));
 
@@ -48,6 +48,11 @@ export class InputHandler {
 
                 const scaleX = this.canvas.width / this.canvasRect.width;
                 const tx = (touch.clientX - this.canvasRect.left) * scaleX;
+
+                if (e.type === 'touchstart') {
+                    this.mouse.isDown = true;
+                    this.updateMousePosition(touch.clientX, touch.clientY);
+                }
 
                 // If this is a new touch on the right half of the screen
                 if (tx > this.canvasRect.width / 2) {
@@ -69,12 +74,10 @@ export class InputHandler {
                         }
 
                         this.mouse.isDown = true;
-                        // Mock a mouse position far in that direction so existing aim code works
-                        // Actually, Game.ts logic for mobile uses a specific check for joystick active.
                     }
                 } else if (!this.aimJoystick.active) {
                     // Conventional tap-to-aim for left side touches that aren't the joystick
-                    updateMousePosition(touch.clientX, touch.clientY);
+                    this.updateMousePosition(touch.clientX, touch.clientY);
                     this.mouse.isDown = true;
                 }
             }
@@ -101,8 +104,6 @@ export class InputHandler {
     }
 
     private setupMobileHUD() {
-        // HUD starts hidden, Game.ts will show it on startGame()
-
         const joyZone = document.getElementById('joystick-left');
         const stick = document.getElementById('stick-left');
 
@@ -156,7 +157,6 @@ export class InputHandler {
             });
         }
 
-        // Mobile Buttons
         const btnSpace = document.getElementById('mobile-ability');
         if (btnSpace) {
             btnSpace.addEventListener('touchstart', (e) => {
@@ -195,7 +195,6 @@ export class InputHandler {
     }
 
     update() {
-        // Create a copy for next frame comparison
         this.previousKeys = new Set(this.keys);
     }
 

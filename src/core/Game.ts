@@ -103,7 +103,7 @@ export class Game {
     }
 
     startGame(role: PlayerRole) {
-        if (this.isPlaying) return;
+        if (this.isPlaying && !this.isGameOver) return;
 
         this.isPlaying = true;
         this.isGameOver = false;
