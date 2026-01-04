@@ -528,8 +528,15 @@ export class Game {
 
                         // Determine if we should keep going or stop
                         if (this.player.role === 'GIANT') {
-                            // Giant bullets only splash to NEARBY enemies (not primary target)
-                            this.triggerSplashDamage(p.x, p.y, 60, p.damage * 0.5, 20, e);
+                            // Heavy knockback for primary target
+                            const gdx = e.x - p.x;
+                            const gdy = e.y - p.y;
+                            const gdist = Math.hypot(gdx, gdy) || 1;
+                            e.x += (gdx / gdist) * 60;
+                            e.y += (gdy / gdist) * 60;
+
+                            // Giant bullets splash to NEARBY enemies with high force
+                            this.triggerSplashDamage(p.x, p.y, 100, p.damage * 0.6, 80, e);
                             p.markedForDeletion = true;
                             break;
                         }
