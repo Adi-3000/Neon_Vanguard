@@ -3,7 +3,7 @@ import { Entity } from './Entity';
 export class Projectile extends Entity {
     vx: number;
     vy: number;
-    speed: number = 600;
+    speed: number = 900;
     damage: number = 40;
     isEnemy: boolean = false;
 

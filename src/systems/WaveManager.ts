@@ -4,14 +4,14 @@ import { Entity } from '../entities/Entity';
 
 export class WaveManager {
     spawnTimer: number = 0;
-    spawnInterval: number = 2;
+    spawnInterval: number = 1.2;
     wave: number = 1;
     player: Entity;
     screenWidth: number;
     screenHeight: number;
 
     hpMult: number = 1;
-    speedMult: number = 1;
+    speedMult: number = 1.0;
 
     constructor(player: Entity, w: number, h: number) {
         this.player = player;
@@ -19,14 +19,15 @@ export class WaveManager {
         this.screenHeight = h;
     }
 
-    setDifficulty(hpMult: number, speedMult: number) {
+    setDifficulty(hpMult: number) {
         this.hpMult = hpMult;
-        this.speedMult = speedMult;
+        // Faster speed scaling: 1.0 + (wave * 0.05)
+        this.speedMult = 1.0 + (this.wave * 0.05);
         // Spawn Interval Logic:
-        // Start: 2.0s
-        // Decrease by 0.15s per wave
-        // Min: 0.2s
-        this.spawnInterval = Math.max(0.2, 2.0 - (this.wave * 0.15));
+        // Start: 1.2s
+        // Decrease by 0.1s per wave
+        // Min: 0.15s (Extreme speed)
+        this.spawnInterval = Math.max(0.15, 1.2 - (this.wave * 0.1));
     }
 
     update(dt: number, enemiesList: Enemy[]) {
@@ -65,29 +66,28 @@ export class WaveManager {
         let type: EnemyType = 'BASIC';
         const rand = Math.random();
 
-        // Progressive Spawning: New Type Every 2 Waves
-        // Wave 1-2: Basic
-        // Wave 3-4: Basic + Runners
-        // Wave 5-6: Basic + Runners + Shooters
-        // Wave 7+: Full Mix (Basic + Runners + Shooters + Tanks)
+        // Progressive Spawning: Much faster introduction
+        // Wave 1: Basic
+        // Wave 2: Basic + Runners
+        // Wave 3-4: Basic + Runners + Shooters
+        // Wave 5+: Full Mix
 
-        if (this.wave >= 7) {
-            // Wave 7+: Full Chaos
-            if (rand < 0.20) type = 'TANK';       // Tank introduced late
-            else if (rand < 0.40) type = 'SHOOTER';
-            else if (rand < 0.70) type = 'RUNNER';
-            else type = 'BASIC';
-        } else if (this.wave >= 5) {
-            // Wave 5-6: Add Shooters
-            if (rand < 0.30) type = 'SHOOTER';
-            else if (rand < 0.60) type = 'RUNNER';
+        if (this.wave >= 5) {
+            // Wave 5+: All types
+            if (rand < 0.15) type = 'TANK';
+            else if (rand < 0.45) type = 'SHOOTER';
+            else if (rand < 0.75) type = 'RUNNER';
             else type = 'BASIC';
         } else if (this.wave >= 3) {
-            // Wave 3-4: Add Runners
+            // Wave 3-4: Add Shooters
+            if (rand < 0.35) type = 'SHOOTER';
+            else if (rand < 0.70) type = 'RUNNER';
+            else type = 'BASIC';
+        } else if (this.wave >= 2) {
+            // Wave 2: Add Runners
             if (rand < 0.50) type = 'RUNNER';
             else type = 'BASIC';
         } else {
-            // Wave 1-2: Basic Only
             type = 'BASIC';
         }
 

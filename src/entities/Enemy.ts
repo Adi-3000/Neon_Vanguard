@@ -4,7 +4,7 @@ export type EnemyType = 'RUNNER' | 'SHOOTER' | 'TANK' | 'BOSS' | 'BASIC';
 
 export class Enemy extends Entity {
     type: EnemyType;
-    speed: number;
+    speed: number = 900;
     target: Entity | null;
     hp: number;
     maxHp: number;
@@ -21,31 +21,31 @@ export class Enemy extends Entity {
         // Stats based on type
         switch (type) {
             case 'RUNNER':
-                this.speed = 180;
+                this.speed = 220;
                 this.hp = 60; // Increased from 20
                 this.radius = 12;
                 this.color = '#ff0055'; // Red
                 break;
             case 'SHOOTER':
-                this.speed = 80;
+                this.speed = 100;
                 this.hp = 80; // Increased from 30
                 this.radius = 15;
                 this.color = '#aa00ff'; // Purple
                 break;
             case 'TANK':
-                this.speed = 60;
+                this.speed = 90;
                 this.hp = 300; // Increased from 100
                 this.radius = 25;
                 this.color = '#ffaa00'; // Orange/Brown
                 break;
             case 'BOSS':
-                this.speed = 40;
+                this.speed = 60;
                 this.hp = 6000; // Decreased from 8000
                 this.radius = 60;
                 this.color = '#ff0000'; // Big Red
                 break;
             case 'BASIC':
-                this.speed = 120; // Slower than Runner (180)
+                this.speed = 150; // Slower than Runner (180)
                 this.hp = 50;     // Increased from 25
                 this.radius = 14;
                 this.color = '#00ff00'; // Green Zombie

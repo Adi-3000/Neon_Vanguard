@@ -356,7 +356,7 @@ export class Game {
         }
 
         const stats = this.entropySystem.getEnemyStatsMultiplier();
-        this.waveManager.setDifficulty(stats.hp, stats.speed);
+        this.waveManager.setDifficulty(stats.hp);
 
         let playerDt = dt;
         if (this.timeScale < 1.0) playerDt = dt / this.timeScale;

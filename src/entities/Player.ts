@@ -58,28 +58,28 @@ export class Player extends Entity {
         switch (this.role) {
             case 'GUNNER':
                 this.color = '#00ffff';
-                this.speed = 350;
-                this.fireRateMult = 1.2;
-                this.abilityCooldown = 8;
+                this.speed = 400;
+                this.fireRateMult = 1.3;
+                this.abilityCooldown = 7;
                 this.maxTargets = 3;
                 break;
 
             case 'GIANT':
                 this.color = '#ff4400'; // Deep Orange
-                this.speed = 180;
-                this.damageMult = 0.5; // Lower base damage (but has splash)
+                this.speed = 220;
+                this.damageMult = 0.6; // Slightly higher base damage
                 this.baseMaxHp = 400;
                 this.hp = 400;
-                this.abilityCooldown = 20;
+                this.abilityCooldown = 15;
                 this.radius = 15; // Reset to same as Gunner
                 break;
             case 'HEALER':
                 this.color = '#00ffaa'; // Mint Green
-                this.speed = 300;
-                this.damageMult = 0.4;
+                this.speed = 320;
+                this.damageMult = 0.45;
                 this.baseMaxHp = 120;
                 this.hp = 120;
-                this.abilityCooldown = 25;
+                this.abilityCooldown = 20;
                 break;
         }
         this.maxHp = this.baseMaxHp;
