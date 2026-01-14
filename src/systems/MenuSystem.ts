@@ -5,12 +5,22 @@ export class MenuSystem {
     uiContainer: HTMLElement;
 
     constructor(game: any) {
+        console.log('[MENU] Constructor called');
         this.game = game;
         this.uiContainer = document.getElementById('ui-layer')!;
+        console.log('[MENU] UI Container:', this.uiContainer);
+
+        window.addEventListener('networkRolePicked', () => {
+            if (document.getElementById('lobby-id')) {
+                this.updateLobbyUI();
+            }
+        });
     }
 
     showMainMenu() {
+        console.log('[MENU] showMainMenu() called');
         const isSmall = window.innerWidth < 600;
+        console.log('[MENU] Screen size - isSmall:', isSmall, 'width:', window.innerWidth);
         this.uiContainer.innerHTML = `
             <div style="
                 position: absolute; 
@@ -65,6 +75,22 @@ export class MenuSystem {
                       onmouseout="this.style.background='transparent'; this.style.transform='scale(1)'">
                         HIGH SCORES
                     </button>
+
+                    <button id="btn-multiplayer" style="
+                        background: transparent;
+                        border: 2px solid #f0f;
+                        color: #f0f;
+                        padding: 1rem 3rem;
+                        font-size: 1.2rem;
+                        font-family: monospace;
+                        cursor: pointer;
+                        transition: 0.3s;
+                        width: 250px;
+                        text-shadow: 0 0 10px #f0f;
+                    " onmouseover="this.style.background='rgba(255,0,255,0.1)'; this.style.transform='scale(1.05)'"
+                      onmouseout="this.style.background='transparent'; this.style.transform='scale(1)'">
+                        MULTIPLAYER
+                    </button>
                 </div>
 
                 <div style="margin-top: 3rem; color: #555; font-size: 0.8rem;">
@@ -75,6 +101,211 @@ export class MenuSystem {
 
         document.getElementById('btn-start')!.onclick = () => this.showCharacterSelect();
         document.getElementById('btn-scores')!.onclick = () => this.showHighScores();
+        document.getElementById('btn-multiplayer')!.onclick = () => this.showMultiplayerMenu();
+    }
+
+    showMultiplayerMenu() {
+        this.uiContainer.innerHTML = `
+            <div style="
+                position: absolute; 
+                top: 50%; left: 50%; 
+                transform: translate(-50%, -50%);
+                text-align: center;
+                color: #fff;
+                font-family: monospace;
+                pointer-events: auto;
+                width: 90%;
+                background: rgba(0,0,5,0.9);
+                padding: 2rem;
+                border: 2px solid #f0f;
+            ">
+                <h1 style="color: #f0f; margin-bottom: 2rem;">MULTIPLAYER</h1>
+                <div style="display: flex; flex-direction: column; gap: 1.5rem; align-items: center;">
+                    <button id="btn-create" style="background: transparent; border: 2px solid #0ff; color: #0ff; padding: 1rem 2rem; width: 250px; cursor: pointer;">CREATE ROOM</button>
+                    <button id="btn-join" style="background: transparent; border: 2px solid #0ff; color: #0ff; padding: 1rem 2rem; width: 250px; cursor: pointer;">JOIN ROOM</button>
+                    <button id="btn-multi-back" style="background: transparent; border: 1px solid #555; color: #888; padding: 0.5rem 2rem; width: 250px; cursor: pointer;">BACK</button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('btn-create')!.onclick = async () => {
+            const roomId = await this.game.networkSystem.createRoom();
+            this.showLobby(true, roomId);
+        };
+
+        document.getElementById('btn-join')!.onclick = () => {
+            this.showJoinScreen();
+        };
+
+        document.getElementById('btn-multi-back')!.onclick = () => this.showMainMenu();
+    }
+
+    showJoinScreen() {
+        this.uiContainer.innerHTML = `
+            <div style="
+                position: absolute; 
+                top: 50%; left: 50%; 
+                transform: translate(-50%, -50%);
+                text-align: center;
+                color: #fff;
+                font-family: monospace;
+                pointer-events: auto;
+                width: 90%;
+                background: rgba(0,0,5,0.95);
+                padding: 2.5rem;
+                border: 2px solid #0ff;
+                box-shadow: 0 0 30px rgba(0,255,255,0.2);
+            ">
+                <h2 style="color: #0ff; margin-bottom: 2rem; letter-spacing: 2px;">JOIN MISSION</h2>
+                <div style="display: flex; flex-direction: column; gap: 1.5rem; align-items: center;">
+                    <input type="text" id="join-room-id" placeholder="ENTER ROOM ID" style="
+                        background: rgba(0,0,0,0.5);
+                        border: 1px solid #0ff;
+                        color: #0ff;
+                        padding: 1rem;
+                        font-family: monospace;
+                        font-size: 1.2rem;
+                        width: 100%;
+                        max-width: 300px;
+                        text-align: center;
+                    ">
+                    <button id="btn-confirm-join" style="
+                        background: #0ff; 
+                        color: #000; 
+                        border: none; 
+                        padding: 1rem 2rem; 
+                        width: 100%; 
+                        max-width: 300px; 
+                        font-weight: bold; 
+                        cursor: pointer;
+                        font-size: 1rem;
+                    ">CONNECT TO HOST</button>
+                    <button id="btn-join-back" style="
+                        background: transparent; 
+                        border: 1px solid #555; 
+                        color: #888; 
+                        padding: 0.8rem 2rem; 
+                        width: 100%; 
+                        max-width: 300px; 
+                        cursor: pointer;
+                    ">BACK</button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('btn-confirm-join')!.onclick = () => {
+            const input = document.getElementById('join-room-id') as HTMLInputElement;
+            const roomId = input.value.trim();
+            if (roomId) {
+                this.game.networkSystem.joinRoom(roomId).then((success: boolean) => {
+                    if (success) this.showLobby(false, roomId);
+                    else alert("Failed to join room. Verify the ID.");
+                });
+            } else {
+                alert("Please enter a valid Room ID.");
+            }
+        };
+
+        document.getElementById('btn-join-back')!.onclick = () => this.showMultiplayerMenu();
+    }
+
+    showLobby(isHost: boolean, roomId: string) {
+        this.renderLobbyBase(isHost, roomId);
+        this.updateLobbyUI();
+    }
+
+    renderLobbyBase(isHost: boolean, roomId: string) {
+        this.uiContainer.innerHTML = `
+            <div style="
+                position: absolute; 
+                top: 50%; left: 50%; 
+                transform: translate(-50%, -50%);
+                text-align: center;
+                color: #fff;
+                font-family: monospace;
+                pointer-events: auto;
+                width: 90%;
+            ">
+                <h2 style="color: #f0f;">LOBBY: <span id="lobby-id" style="user-select: all;">${roomId}</span></h2>
+                <button id="btn-copy" style="
+                    margin-left: 10px;
+                    background: transparent;
+                    border: 1px solid #0ff;
+                    color: #0ff;
+                    cursor: pointer;
+                    padding: 2px 8px;
+                    font-size: 0.8rem;
+                ">COPY</button>
+                <p style="color: #888;">Share this ID with up to 2 other players</p>
+                
+                <div id="lobby-members" style="margin: 2rem 0; display: flex; justify-content: center; gap: 1rem;">
+                    <!-- Members will be listed here -->
+                </div>
+
+                <div id="class-cards" style="display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                    <!-- Class cards will be here -->
+                </div>
+
+                <div style="margin-top: 2rem;">
+                    ${isHost ? '<button id="btn-start-multi" style="background: #0ff; color: #000; border: none; padding: 1rem 3rem; font-weight: bold; cursor: pointer;">START MISSION</button>' : '<p style="color: #0ff;">Waiting for host to start...</p>'}
+                </div>
+            </div>
+        `;
+
+        const copyBtn = document.getElementById('btn-copy');
+        if (copyBtn) {
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(roomId).then(() => {
+                    copyBtn.innerText = 'COPIED!';
+                    // Styles...
+                    setTimeout(() => { copyBtn.innerText = 'COPY'; }, 2000);
+                });
+            };
+        }
+
+        if (isHost) {
+            document.getElementById('btn-start-multi')!.onclick = () => {
+                this.game.networkSystem.connections.forEach((conn: any) => {
+                    const clientRole = this.game.networkSystem.playerRoles.get(conn.peer) || 'GUNNER';
+                    conn.send({ type: 'START_MISSION', payload: { role: clientRole } });
+                });
+                const hostRole = this.game.networkSystem.myRole || 'GUNNER';
+                this.game.isMultiplayer = true;
+                this.game.startGame(hostRole as PlayerRole);
+            };
+        }
+    }
+
+    updateLobbyUI() {
+        const container = document.getElementById('class-cards');
+        if (!container) return;
+
+        container.innerHTML = `
+            ${this.createClassCard('GUNNER', 'DPS', 'Bullet Time', '#00ffff')}
+            ${this.createClassCard('GIANT', 'Tank', 'Slam', '#ff4400')}
+            ${this.createClassCard('HEALER', 'Support', 'Medic Station', '#00ffaa')}
+        `;
+
+        this.attachMultiplayerListeners();
+    }
+
+    attachMultiplayerListeners() {
+        ['GUNNER', 'GIANT', 'HEALER'].forEach(role => {
+            const btn = document.getElementById(`select-${role}`);
+            let isTakenByOther = false;
+            this.game.networkSystem.playerRoles.forEach((r: string, id: string) => {
+                if (r === role && id !== this.game.networkSystem.myId) isTakenByOther = true;
+            });
+
+            if (btn && !isTakenByOther) {
+                btn.onclick = () => {
+                    this.game.networkSystem.myRole = role;
+                    this.game.networkSystem.playerRoles.set(this.game.networkSystem.myId, role);
+                    this.game.networkSystem.broadcast('ROLE_PICKED', { id: this.game.networkSystem.myId, role });
+                    this.updateLobbyUI();
+                };
+            }
+        });
     }
 
     showHighScores() {
@@ -158,21 +389,33 @@ export class MenuSystem {
 
     createClassCard(role: string, type: string, ability: string, color: string) {
         const isSmall = window.innerWidth < 600;
+
+        let pickedById = null;
+        this.game.networkSystem.playerRoles.forEach((r: string, id: string) => {
+            if (r === role) pickedById = id;
+        });
+
+        const isLocked = pickedById !== null && pickedById !== this.game.networkSystem.myId;
+        const isSelected = this.game.networkSystem.myRole === role;
+
         return `
             <div id="select-${role}" style="
-                border: 2px solid ${color};
-                background: rgba(0,0,0,0.8);
+                border: 2px solid ${isLocked ? '#444' : (isSelected ? '#fff' : color)};
+                background: ${isSelected ? color + '44' : 'rgba(0,0,0,0.8)'};
                 padding: ${isSmall ? '0.8rem' : '1.5rem'};
-                cursor: pointer;
+                cursor: ${isLocked ? 'not-allowed' : 'pointer'};
                 transition: transform 0.2s;
-                width: ${isSmall ? '100%' : '180px'};
+                width: ${isSmall ? '45%' : '180px'};
                 max-width: 280px;
-            " onmouseover="this.style.transform='scale(1.05)'" 
-              onmouseout="this.style.transform='scale(1)'">
-                <h3 style="color:${color}; margin: 0;">${role}</h3>
-                <p style="color:#ddd; font-size: 0.75rem; margin: 5px 0;">${type}</p>
-                <hr style="border-color:${color}; margin: 0.5rem 0;">
-                <p style="font-size:0.75rem; margin: 0;">Ability: <strong>${ability}</strong></p>
+                opacity: ${isLocked ? '0.4' : '1'};
+                position: relative;
+                box-shadow: ${isSelected ? '0 0 20px ' + color : 'none'};
+            ">
+                ${isLocked ? '<div style="position:absolute; top:5px; right:5px; font-size:10px; color:#fff; background:#f00; padding:2px 5px; font-family:sans-serif; font-weight:bold;">TAKEN</div>' : ''}
+                <h3 style="color:${isLocked ? '#888' : color}; margin: 0; font-size:${isSmall ? '0.9rem' : '1.2rem'}">${role}</h3>
+                <p style="color:#ddd; font-size: 0.7rem; margin: 5px 0;">${type}</p>
+                <hr style="border-color:${isLocked ? '#444' : color}; margin: 0.5rem 0;">
+                <p style="font-size:0.65rem; margin: 0;"><strong>${ability}</strong></p>
             </div>
         `;
     }

@@ -21,6 +21,7 @@ export class Player extends Entity {
     activeTimer: number = 0;
 
     isInvincible: boolean = false;
+    isDead: boolean = false;
 
     // Upgrades (Permanent per run)
     penetration: number = 0; // 0.1 to 0.5
@@ -86,6 +87,8 @@ export class Player extends Entity {
     }
 
     update(dt: number, input?: InputHandler) {
+        if (this.isDead) return;
+
         // Cooldown management
         if (this.abilityTimer > 0) {
             this.abilityTimer -= dt;

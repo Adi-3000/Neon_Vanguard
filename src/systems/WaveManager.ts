@@ -12,6 +12,7 @@ export class WaveManager {
 
     hpMult: number = 1;
     speedMult: number = 1.0;
+    playerCount: number = 1;
 
     constructor(player: Entity, w: number, h: number) {
         this.player = player;
@@ -20,14 +21,21 @@ export class WaveManager {
     }
 
     setDifficulty(hpMult: number) {
-        this.hpMult = hpMult;
+        // Multiplier for multiplayer: 1.0 + (players - 1) * 0.5
+        // 2 players = 1.5x difficulty, 3 players = 2.0x difficulty
+        const mpFactor = 1.0 + (this.playerCount - 1) * 0.5;
+        this.hpMult = hpMult * mpFactor;
+
         // Faster speed scaling: 1.0 + (wave * 0.05)
         this.speedMult = 1.0 + (this.wave * 0.05);
+
         // Spawn Interval Logic:
         // Start: 1.2s
         // Decrease by 0.1s per wave
-        // Min: 0.15s (Extreme speed)
-        this.spawnInterval = Math.max(0.15, 1.2 - (this.wave * 0.1));
+        // Min: 0.1s (Extreme speed)
+        // Multiplayer decreases interval: base / mpFactor
+        const baseInterval = 1.2 - (this.wave * 0.1);
+        this.spawnInterval = Math.max(0.1, baseInterval / mpFactor);
     }
 
     update(dt: number, enemiesList: Enemy[]) {

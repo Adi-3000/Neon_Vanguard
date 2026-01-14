@@ -151,6 +151,8 @@ export class ShopSystem {
     isShopOpen: boolean = false;
     currentMode: 'ARSENAL' | 'POWERUP' = 'ARSENAL';
     availablePowerUps: PowerUp[] = [];
+    selectionTimer: any = null;
+    timeLeft: number = 0;
 
     constructor(game: any) {
         this.game = game;
@@ -158,18 +160,36 @@ export class ShopSystem {
     }
 
     openArsenal() {
+        if (this.game.player.isDead) return;
         this.currentMode = 'ARSENAL';
         this.isShopOpen = true;
-        this.game.paused = true;
-        this.game.input.reset();
+        if (!this.game.isMultiplayer) {
+            this.game.paused = true;
+            this.game.input.reset();
+        }
         this.renderUI();
     }
 
     openPowerUpChoice() {
+        if (this.game.player.isDead) return;
         this.currentMode = 'POWERUP';
         this.isShopOpen = true;
-        this.game.paused = true;
-        this.game.input.reset();
+        if (!this.game.isMultiplayer) {
+            this.game.paused = true;
+            this.game.input.reset();
+        } else {
+            // Multiplayer Selection Timer
+            this.timeLeft = 5; // 5 seconds to choose
+            if (this.selectionTimer) clearInterval(this.selectionTimer);
+            this.selectionTimer = setInterval(() => {
+                this.timeLeft--;
+                if (this.timeLeft <= 0) {
+                    this.closeShop();
+                } else {
+                    this.renderPowerUps();
+                }
+            }, 1000);
+        }
         const shuffled = [...this.powerUps].sort(() => 0.5 - Math.random());
         this.availablePowerUps = shuffled.slice(0, 3);
         this.renderUI();
@@ -177,7 +197,11 @@ export class ShopSystem {
 
     closeShop() {
         this.isShopOpen = false;
-        this.game.paused = false;
+        if (this.selectionTimer) clearInterval(this.selectionTimer);
+        this.selectionTimer = null;
+        if (!this.game.isMultiplayer) {
+            this.game.paused = false;
+        }
         if (!this.game.player.powerUps.shield.active && this.game.player.role !== 'HEALER') {
             this.game.player.isInvincible = false;
         }
@@ -216,6 +240,9 @@ export class ShopSystem {
                         `;
         }).join('')}
                 </div>
+
+                ${this.renderReviveSection(isSmall)}
+
                 <div style="display: flex; gap: 10px; justify-content: center; margin-top: 1.5rem; margin-bottom: 0.5rem;">
                     <button id="close-arsenal" style="background: #f44; border: none; color: white; padding: 0.6rem 2rem; cursor: pointer; font-weight: bold; font-family: monospace;">EXIT</button>
                 </div>
@@ -233,7 +260,64 @@ export class ShopSystem {
                 };
             }
         });
+
+        // Revive listeners
+        if (this.game.isMultiplayer) {
+            this.game.remotePlayers.forEach((rp: any, id: string) => {
+                if (rp.isDead) {
+                    const btn = document.getElementById(`revive-${id}`);
+                    if (btn && this.shards >= 100) {
+                        btn.onclick = () => {
+                            this.shards -= 100;
+                            // Send revive event
+                            if (this.game.networkSystem.isHost) {
+                                this.game.networkSystem.broadcast('REVIVE_PLAYER', { targetId: id });
+                            } else {
+                                this.game.networkSystem.sendToHost('REVIVE_PLAYER', { targetId: id });
+                            }
+                            // Local event trigger
+                            window.dispatchEvent(new CustomEvent('networkRevivePlayer', { detail: { targetId: id } }));
+                            this.renderArsenal();
+                        };
+                    }
+                }
+            });
+        }
+
         document.getElementById('close-arsenal')?.addEventListener('click', () => this.closeShop());
+    }
+
+    renderReviveSection(isSmall: boolean): string {
+        if (!this.game.isMultiplayer) return '';
+
+        const deadTeammates: { id: string, role: string }[] = [];
+        this.game.remotePlayers.forEach((rp: any, id: string) => {
+            if (rp.isDead) deadTeammates.push({ id, role: rp.role });
+        });
+
+        if (deadTeammates.length === 0) return '';
+
+        return `
+            <div style="margin-top: 1.5rem; border-top: 1px solid #0f0; padding-top: 1rem;">
+                <h2 style="color: #0f0; font-size: ${isSmall ? '0.9rem' : '1.1rem'}; margin-bottom: 0.5rem;">DEFIBRILLATOR (REVIVE)</h2>
+                <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                    ${deadTeammates.map(tm => {
+            const canAfford = this.shards >= 100;
+            return `
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 255, 0, 0.05); padding: 0.6rem; border: 1px solid #0f0;">
+                                <div style="text-align: left;">
+                                    <h3 style="margin: 0; color: #0f0; font-size: 0.85rem;">Revive ${tm.role}</h3>
+                                    <p style="margin: 0; font-size: 0.7rem; color: #888;">Bring them back with full HP</p>
+                                </div>
+                                <button id="revive-${tm.id}" ${!canAfford ? 'disabled' : ''} style="background: ${canAfford ? '#0f0' : '#222'}; color: #000; border: none; padding: 0.5rem; cursor: ${canAfford ? 'pointer' : 'not-allowed'}; font-weight: bold; min-width: 80px;">
+                                    100 SHARDS
+                                </button>
+                            </div>
+                        `;
+        }).join('')}
+                </div>
+            </div>
+        `;
     }
 
     renderPowerUps() {
@@ -241,7 +325,7 @@ export class ShopSystem {
         this.uiContainer.innerHTML = `
             <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(5, 20, 5, 0.98); border: 2px solid #0f0; padding: ${isSmall ? '1rem' : '2rem'}; text-align: center; color: #fff; font-family: monospace; pointer-events: auto; width: 95%; max-width: 600px; max-height: 90vh; overflow-y: auto;">
                 <h1 style="color: #0f0; text-shadow: 0 0 10px #0f0; font-size: ${isSmall ? '1.2rem' : '1.5rem'};">FREE POWER-UP CHOICE</h1>
-                <p style="font-size: 0.9rem;">Advanced cycle complete. Select one:</p>
+                ${this.game.isMultiplayer ? `<p style="color: #f00; font-weight: bold; font-size: 1.2rem;">AUTO-CLOSING IN: ${this.timeLeft}s</p>` : '<p style="font-size: 0.9rem;">Advanced cycle complete. Select one:</p>'}
                 <div style="display: flex; flex-direction: ${isSmall ? 'column' : 'row'}; gap: 0.8rem; margin-top: 1.5rem; justify-content: center; align-items: center;">
                     ${this.availablePowerUps.map((p, i) => `
                         <button id="pu-${i}" style="background: #111; border: 1px solid #0f0; color: #fff; padding: 1rem; width: ${isSmall ? '100%' : '180px'}; cursor: pointer; transition: 0.2s;">

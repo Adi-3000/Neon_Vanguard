@@ -12,11 +12,14 @@ export class Enemy extends Entity {
     // Shooter specific
     shootTimer: number = 0;
     fireRate: number = 2.0;
+    id: number;
+    static nextId: number = 0;
 
-    constructor(x: number, y: number, target: Entity | null, type: EnemyType = 'RUNNER') {
+    constructor(x: number, y: number, target: Entity | null, type: EnemyType = 'RUNNER', id?: number) {
         super(x, y, 15, '#ff0055');
         this.target = target;
         this.type = type;
+        this.id = id !== undefined ? id : Enemy.nextId++;
 
         // Stats based on type
         switch (type) {
@@ -58,8 +61,29 @@ export class Enemy extends Entity {
         this.maxHp = this.hp;
     }
 
-    update(dt: number, addProjectile?: (x: number, y: number, tx: number, ty: number, isEnemy: boolean) => void, customTarget?: { x: number, y: number, radius: number }) {
-        const finalTarget = customTarget || this.target;
+    update(dt: number, addProjectile?: (x: number, y: number, tx: number, ty: number, isEnemy: boolean) => void, customTarget?: { x: number, y: number, radius: number }, possibleTargets: Entity[] = []) {
+        // Find closest target if multiple are available
+        let finalTarget = customTarget || this.target;
+
+        if (!customTarget && possibleTargets.length > 0) {
+            let minDist = Infinity;
+            let closest = null;
+
+            // Only target ALIVE players
+            const aliveTargets = possibleTargets.filter(p => p && !(p as any).isDead);
+
+            for (const p of aliveTargets) {
+                const dx = p.x - this.x;
+                const dy = p.y - this.y;
+                const distSq = dx * dx + dy * dy;
+                if (distSq < minDist) {
+                    minDist = distSq;
+                    closest = p;
+                }
+            }
+            finalTarget = closest;
+        }
+
         if (!finalTarget) return;
 
         const dx = finalTarget.x - this.x;

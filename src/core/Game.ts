@@ -8,6 +8,7 @@ import { EntropySystem } from '../systems/EntropySystem';
 import { ShopSystem } from '../systems/ShopSystem';
 import { ParticleSystem } from '../systems/ParticleSystem';
 import { MenuSystem } from '../systems/MenuSystem';
+import { NetworkSystem } from '../systems/NetworkSystem';
 
 export class Game {
     canvas: HTMLCanvasElement;
@@ -26,6 +27,9 @@ export class Game {
     shopSystem!: ShopSystem;
     particleSystem!: ParticleSystem;
     menuSystem: MenuSystem;
+    networkSystem: NetworkSystem;
+    remotePlayers: Map<string, Player> = new Map();
+    isMultiplayer: boolean = false;
 
     // Game State
     isPlaying: boolean = false;
@@ -51,22 +55,126 @@ export class Game {
     // High Scores
     highScore: number = 0;
     highWave: number = 0;
+    gameOverTimer: number = 0;
 
     constructor(canvas: HTMLCanvasElement) {
+        console.log('[GAME] Constructor called with canvas:', canvas);
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d')!;
+        console.log('[GAME] Canvas context:', this.ctx);
         this.input = new InputHandler(this.canvas);
 
         this.highScore = parseInt(localStorage.getItem('antigravity_highscore') || '0');
         this.highWave = parseInt(localStorage.getItem('antigravity_highwave') || '0');
 
+        console.log('[GAME] Setting up fullscreen...');
         this.setupFullscreen();
+        console.log('[GAME] Resizing...');
         this.resize();
         window.addEventListener('resize', () => this.resize());
 
-        // Initialize core systems that don't depend on player
+        // Initialize core systems
+        console.log('[GAME] Initializing network system...');
+        this.networkSystem = new NetworkSystem();
+        console.log('[GAME] Initializing menu system...');
         this.menuSystem = new MenuSystem(this);
+
+        // Multiplayer Listeners
+        window.addEventListener('networkStartMission', (e: any) => {
+            this.isMultiplayer = true;
+            this.startGame(e.detail.role);
+        });
+
+        window.addEventListener('networkWorldSync', (e: any) => {
+            if (!this.networkSystem.isHost) {
+                this.waveCount = e.detail.wave;
+                this.shopSystem.shards = e.detail.shards;
+
+                // Sync Enemies
+                const serverEnemies = e.detail.enemies || [];
+                const serverEnemyIds = new Set(serverEnemies.map((e: any) => e.id));
+
+                serverEnemies.forEach((sEnemy: any) => {
+                    let localEnemy = this.enemies.find(e => e.id === sEnemy.id);
+                    if (!localEnemy) {
+                        // Create new enemy
+                        localEnemy = new Enemy(sEnemy.x, sEnemy.y, this.player, sEnemy.type, sEnemy.id);
+                        this.enemies.push(localEnemy);
+                    }
+                    // Update state
+                    localEnemy.x = sEnemy.x;
+                    localEnemy.y = sEnemy.y;
+                    localEnemy.hp = sEnemy.hp;
+                    localEnemy.maxHp = sEnemy.maxHp || localEnemy.maxHp;
+                    // Reset stale flag if we were tracking that
+                });
+
+                // Remove enemies not in server list (died)
+                this.enemies = this.enemies.filter(e => serverEnemyIds.has(e.id));
+            }
+        });
+
+        window.addEventListener('networkFireBullet', (e: any) => {
+            // Spawn visual projectile
+            const { x, y, tx, ty, damageMult } = e.detail;
+            const bullet = new Projectile(x, y, tx, ty);
+            bullet.damage *= damageMult;
+            // We could mark it as 'remote' to avoid local collision logic if we wanted,
+            // but for simplicity, let it just be visual or valid. 
+            // In this design, only Host processes collisions for enemies, so clients just see bullets.
+            // But if a client shoots, they want to see their bullet hit?
+            // Actually, if Host is authoritative, Host detects hits.
+            // So for clients, these bullets should probably just be visual or they might double-predict hits.
+            // Let's rely on standard projectile update. Host will check collisions.
+            // Client projectiles shouldn't kill local phantom enemies faster than server says.
+            // Ideally, we mark these projectiles as 'visual only' or rely on sync.
+            // But since we are syncing enemy HP from server every frame, local damage is overwritten anyway.
+            this.projectiles.push(bullet);
+        });
+
+        window.addEventListener('networkRevivePlayer', (e: any) => {
+            const { targetId } = e.detail;
+            if (targetId === this.networkSystem.myId) {
+                console.log('[GAME] Revived!');
+                this.player.isDead = false;
+                this.player.hp = this.player.maxHp;
+                this.player.isInvincible = true;
+                setTimeout(() => { if (!this.player.powerUps.shield.active) this.player.isInvincible = false; }, 3000);
+                this.particleSystem.spawnExplosion(this.player.x, this.player.y, '#00ff00', 50);
+            } else {
+                const remote = this.remotePlayers.get(targetId);
+                if (remote) {
+                    remote.isDead = false;
+                    remote.hp = remote.maxHp;
+                    this.particleSystem.spawnExplosion(remote.x, remote.y, '#00ff00', 30);
+                }
+            }
+        });
+
+        window.addEventListener('networkMissionFailed', () => {
+            console.log('[GAME] Mission Failed event received');
+            this.gameOver();
+        });
+
+        window.addEventListener('networkRestartMission', () => {
+            console.log('[GAME] Restart Mission event received');
+            this.startGame(this.player.role);
+        });
+
+        console.log('[GAME] Constructor complete');
+    }
+
+    start() {
+        console.log('[GAME] start() called');
+        // Start the game loop and show main menu
+        if (this.lastTime === 0) {
+            this.lastTime = performance.now();
+            console.log('[GAME] Starting game loop with timestamp:', this.lastTime);
+            requestAnimationFrame(this.loop.bind(this));
+        }
+        console.log('[GAME] Showing main menu...');
         this.menuSystem.showMainMenu();
+        console.log('[GAME] Main menu shown');
     }
 
     private setupFullscreen() {
@@ -124,6 +232,9 @@ export class Game {
         this.fireTimer = this.fireRate;
 
         this.waveManager = new WaveManager(this.player, this.canvas.width, this.canvas.height);
+        if (this.isMultiplayer) {
+            this.waveManager.playerCount = this.networkSystem.connections.length + 1;
+        }
         this.entropySystem = new EntropySystem();
         this.shopSystem = new ShopSystem(this);
         this.particleSystem = new ParticleSystem();
@@ -147,85 +258,55 @@ export class Game {
         }
     }
 
-    // The start method is now redundant as the game loop is initiated in startGame
-    // If there's other setup needed before the loop, it should be moved to startGame
-    // or this method should be called from startGame.
-    // For now, it's left empty as per the implied change.
-    start() {
-        // This method is now effectively empty or can be removed if its functionality
-        // has been moved to startGame.
-    }
-
     loop(timestamp: number) {
+        if (!this.lastTime) this.lastTime = timestamp;
         let dt = (timestamp - this.lastTime) / 1000;
         this.lastTime = timestamp;
+
+        // Cap DT to prevent huge jumps
+        if (dt > 0.1) dt = 0.1;
 
         if (this.isPlaying) {
             if (this.isGameOver) {
                 this.gameOverTimer -= dt;
-                // Internal Restart (Preserves Fullscreen)
                 if (this.gameOverTimer <= 0) {
-                    if (this.input.isKeyPressed('Space')) {
+                    if (this.input.isKeyPressed('Space') || (this.input.mouse.isDown && !this.input.isMobile)) {
+                        if (this.isMultiplayer) {
+                            this.networkSystem.broadcast('RESTART_MISSION', {});
+                        }
                         this.startGame(this.player.role);
                     }
-                    if (this.input.mouse.isDown) {
-                        const mx = this.input.mouse.x;
-                        const my = this.input.mouse.y;
-                        const centerX = this.canvas.width / 2;
-                        const centerY = this.canvas.height / 2;
-                        // Main Menu Zone detection
-                        if (mx > centerX - 150 && mx < centerX + 150 && my > centerY + 200 && my < centerY + 240) {
-                            this.returnToMainMenu();
-                        } else {
-                            // Any other click/tap restarts (Desktop & Mobile)
-                            this.startGame(this.player.role);
-                        }
-                    }
                 }
-            } else {
-                // Time scaling for game logic
-                // If paused, update() will handle the early return, but we passed dt normally
-                // Actually, if paused, we want to freeze game time?
-                // The update() method handles the 'if paused return' check now.
-                // We just need to make sure we don't apply timeScale if it causes issues, 
-                // but since we return early in update, it's fine.
-
-                // However, we want 'dt' to be real time for input updates? 
-                // Input update doesn't use DT.
-
-                // Let's just pass raw DT to update, and apply timescale inside update for game logic.
-                // Refactoring update to apply timescale internally would be big.
-                // Easier: Just call update.
-
-                const gameDt = dt * this.timeScale;
-                this.update(dt, gameDt);
+            } else if (!this.paused) {
+                this.update(dt, dt * this.timeScale);
             }
         }
-        this.draw();
 
+        this.draw();
         this.input.update();
         requestAnimationFrame(this.loop.bind(this));
     }
 
     update(_realDt: number, gameDt: number) {
-        // Pause Toggle
+        if (!this.player || !this.isPlaying) return;
+        const dt = gameDt;
+
+        // Pause Toggle handled in loop now, but keeping this for robustness
         if (this.input.isKeyPressed('Escape')) {
             this.paused = !this.paused;
         }
 
         if (this.paused) {
-            // Handle Resume/Menu clicks on Pause screen
+            // ... menu clicks ...
             if (this.input.mouse.isDown) {
                 const mx = this.input.mouse.x;
                 const my = this.input.mouse.y;
                 const xc = this.canvas.width / 2;
                 const yc = this.canvas.height / 2;
 
-                // Resume zone (rendered at yc + 110)
                 if (mx > xc - 100 && mx < xc + 100 && my > yc + 90 && my < yc + 120) {
                     this.paused = false;
                 }
-                // Menu zone (rendered at yc + 140)
                 if (mx > xc - 100 && mx < xc + 100 && my > yc + 120 && my < yc + 155) {
                     this.returnToMainMenu();
                 }
@@ -242,7 +323,6 @@ export class Game {
             }
         }
 
-        const dt = gameDt; // Logical delta time (scaled)
         this.fireTimer += dt;
 
         if (this.shakeTimer > 0) {
@@ -253,7 +333,7 @@ export class Game {
         this.entropySystem.update(dt);
 
         // Ability Input Logic
-        if (this.input.isKeyPressed('Space')) {
+        if (this.input.isKeyPressed('Space') && !this.player.isDead) {
             if (this.player.role === 'GUNNER' && this.player.isAbilityActive) {
                 this.executeDeadEye(); // Early execution
                 return;
@@ -263,7 +343,7 @@ export class Game {
         }
 
         // Gunner Dead Eye Input
-        if (this.player.isAbilityActive && this.player.role === 'GUNNER') {
+        if (this.player.isAbilityActive && this.player.role === 'GUNNER' && !this.player.isDead) {
             this.timeScale = 0.1;
             this.player.activeTimer -= dt * 9.0; // Fast decay for real-time feel
 
@@ -290,8 +370,8 @@ export class Game {
         } else {
             this.timeScale = 1.0;
             // Standard Shooting (WHILE LOOP for consistency in frequency)
-            const isEngaged = this.input.mouse.isDown || this.input.joystick.active || this.input.aimJoystick.active;
-            const shouldFire = this.input.isMobile ? isEngaged : this.input.mouse.isDown;
+            const isEngaged = (this.input.mouse.isDown || this.input.joystick.active || this.input.aimJoystick.active) && !this.player.isDead;
+            const shouldFire = this.input.isMobile ? isEngaged : (this.input.mouse.isDown && !this.player.isDead);
 
             let shotsFiredThisFrame = 0;
             while (shouldFire && this.fireTimer >= this.fireRate && shotsFiredThisFrame < 3) {
@@ -321,10 +401,33 @@ export class Game {
                     b1.damage *= this.player.damageMult;
                     b2.damage *= this.player.damageMult;
                     this.projectiles.push(b1, b2);
+
+                    if (this.isMultiplayer) {
+                        const payload1 = { x: this.player.x - 10, y: this.player.y, tx, ty, damageMult: this.player.damageMult };
+                        const payload2 = { x: this.player.x + 10, y: this.player.y, tx, ty, damageMult: this.player.damageMult };
+
+                        if (this.networkSystem.isHost) {
+                            this.networkSystem.broadcast('FIRE_BULLET', payload1);
+                            this.networkSystem.broadcast('FIRE_BULLET', payload2);
+                        } else {
+                            this.networkSystem.sendToHost('FIRE_BULLET', payload1);
+                            this.networkSystem.sendToHost('FIRE_BULLET', payload2);
+                        }
+                    }
+
                 } else {
                     const bullet = new Projectile(this.player.x, this.player.y, tx, ty);
                     bullet.damage *= this.player.damageMult;
                     this.projectiles.push(bullet);
+
+                    if (this.isMultiplayer) {
+                        const payload = { x: this.player.x, y: this.player.y, tx, ty, damageMult: this.player.damageMult };
+                        if (this.networkSystem.isHost) {
+                            this.networkSystem.broadcast('FIRE_BULLET', payload);
+                        } else {
+                            this.networkSystem.sendToHost('FIRE_BULLET', payload);
+                        }
+                    }
                 }
                 this.triggerShake(0.1, 2);
             }
@@ -367,17 +470,59 @@ export class Game {
         this.player.y = Math.max(this.player.radius, Math.min(this.canvas.height - this.player.radius, this.player.y));
 
         // Updates
-        this.waveManager.update(dt, this.enemies);
+        if (!this.isMultiplayer || this.networkSystem.isHost) {
+            this.waveManager.update(dt, this.enemies);
+        }
+
+        const allTargets: any[] = [];
+        const activeStations: any[] = [];
+
+        // Collect stations first for priority
+        if (this.player.healingStation?.active) {
+            activeStations.push({ x: this.player.healingStation.x, y: this.player.healingStation.y, radius: 30, hp: this.player.healingStation.hp, isStation: true, parent: this.player });
+        }
+        this.remotePlayers.forEach(p => {
+            if (p.healingStation?.active) {
+                activeStations.push({ x: p.healingStation.x, y: p.healingStation.y, radius: 30, hp: p.healingStation.hp, isStation: true, parent: p });
+            }
+        });
+
+        if (activeStations.length > 0) {
+            // ENEMY PRIORITY: ONLY stations if any are active
+            activeStations.forEach(s => allTargets.push(s));
+        } else {
+            // Standard targeting: all alive players
+            if (!this.player.isDead) allTargets.push(this.player);
+            this.remotePlayers.forEach(p => {
+                if (!p.isDead) allTargets.push(p);
+            });
+        }
 
         this.enemies.forEach(e => {
-            const customTarget = (this.player.healingStation && this.player.healingStation.active)
-                ? { x: this.player.healingStation.x, y: this.player.healingStation.y, radius: 30 }
-                : undefined;
-
             e.update(dt, (x: number, y: number, tx: number, ty: number, isEnemy: boolean) => {
+                // Only Host or Singleplayer spawns enemy projectiles that deal damage
+                // But we want clients to see them too. 
+                // Using FIRE_BULLET for enemy shots might be too much traffic.
+                // Better: Clients run enemy logic too? 
+                // No, if we sync Enemy Position, we don't need to run movement logic?
+                // If we sync Pos, we override local logic.
+                // So Client just interpolates?
+                // For this demo, let's keep running local logic but override with sync.
+                // For Enemy Shooting: If Host runs logic, Host adds projectile. 
+                // Host Syncs projectiles?
+                // Current sync doesn't sync All Projectiles (too many).
+                // So Clients MUST run Enemy Shooting logic locally or receive events.
+                // Let's have Clients spawn projectiles locally based on Enemy update, 
+                // but since enemies are synced, they might all shoot at once.
+
+                // DECISION: Host Only spawns enemy bullets, and we need to sync them?
+                // Or just let everyone spawn them. If everyone spawns them, we get duplicates if we also sync?
+                // We are NOT syncing enemy projectiles currently.
+                // So everyone runs `enemy.update` and spawns bullets.
+                // This is fine as long as `shootTimer` is somewhat consistent.
                 const proj = new Projectile(x, y, tx, ty, isEnemy);
                 this.projectiles.push(proj);
-            }, customTarget);
+            }, undefined, allTargets);
         });
 
         this.projectiles.forEach(p => p.update(dt));
@@ -387,9 +532,62 @@ export class Game {
 
         this.projectiles = this.projectiles.filter(p => !p.markedForDeletion);
         this.enemies = this.enemies.filter(e => !e.markedForDeletion);
-        // Cleanup marked targets if dead
-        if (this.player.role === 'GUNNER') {
-            this.player.markedTargets = this.player.markedTargets.filter(e => !e.markedForDeletion);
+        if (this.player.role === 'GUNNER' && this.player.markedTargets) {
+            this.player.markedTargets = this.player.markedTargets.filter(e => e && !e.markedForDeletion);
+        }
+
+        // Multiplayer State Sync
+        if (this.isMultiplayer) {
+            // Send our state including firing info
+            this.networkSystem.broadcast('PLAYER_SYNC', {
+                id: this.networkSystem.myId,
+                role: this.player.role,
+                x: this.player.x,
+                y: this.player.y,
+                hp: this.player.hp,
+                maxHp: this.player.maxHp,
+                isDead: this.player.isDead,
+                score: this.score,
+                isFiring: this.input.mouse.isDown,
+                aimX: this.input.mouse.x,
+                aimY: this.input.mouse.y,
+                healingStation: this.player.role === 'HEALER' ? this.player.healingStation : null
+            });
+
+            // Update remote players
+            this.networkSystem.remotePlayers.forEach((state, id) => {
+                let remotePlayer = this.remotePlayers.get(id);
+                if (!remotePlayer) {
+                    remotePlayer = new Player(state.x, state.y, state.role);
+                    this.remotePlayers.set(id, remotePlayer);
+                }
+                remotePlayer.x = state.x;
+                remotePlayer.y = state.y;
+                remotePlayer.hp = state.hp;
+                remotePlayer.maxHp = state.maxHp;
+                remotePlayer.isDead = state.isDead;
+                if (state.healingStation !== undefined) {
+                    remotePlayer.healingStation = state.healingStation as any;
+                }
+            });
+
+            this.checkAllPlayersDead();
+
+            // If host, send world state
+            if (this.networkSystem.isHost) {
+                this.networkSystem.broadcast('WORLD_SYNC', {
+                    wave: this.waveCount,
+                    shards: this.shopSystem.shards,
+                    enemies: this.enemies.map(e => ({
+                        id: e.id,
+                        type: e.type,
+                        x: e.x,
+                        y: e.y,
+                        hp: e.hp,
+                        maxHp: e.maxHp
+                    }))
+                });
+            }
         }
     }
 
@@ -403,16 +601,35 @@ export class Game {
             const e = entity as Enemy;
             if (e.markedForDeletion) return;
 
+            // In MP, Client cannot deal damage directly if Host is auth.
+            // But DeadEye is a special ability. 
+            // We should fire a special event or just apply damage if we trust clients.
+            // For simplicity, allow Client to Apply Damage -> Syncs next frame?
+            // No, if Client reduces HP, next frame Host overrides it back up.
+            // Client MUST send "DAMAGE_EVENT" or similar?
+            // Or just "FIRE_BULLET" that hits instantly?
+            // Let's make DeadEye send a bullet with infinite speed or handled separately.
+            // For now, let's keep visual feedback. Damage only sticks if Host does it.
+            // But Host doesn't know Client marked targets.
+            // Complex. For now, let it be Visual + Client Local Damage (reverted by sync)
+            // Ideally: Send 'USE_ABILITY' event to Host.
+
             this.particleSystem.spawnExplosion(e.x, e.y, '#ffffff', 20);
 
             // Apply Instant Damage
             const damage = 1000 * this.player.damageMult;
-            e.hp -= damage;
-            this.particleSystem.spawnDamageNumber(e.x, e.y, damage, '#ffffff');
 
-            if (e.hp <= 0) {
-                this.handleEnemyDeath(e);
+            if (!this.isMultiplayer || this.networkSystem.isHost) {
+                e.hp -= damage;
+                if (e.hp <= 0) {
+                    this.handleEnemyDeath(e);
+                }
+            } else {
+                // Client Side prediction (shows damage number)
+                // But HP will reset unless we tell host.
+                // TODO: Send 'HIT_ENEMY' event
             }
+            this.particleSystem.spawnDamageNumber(e.x, e.y, damage, '#ffffff');
         });
 
         this.player.markedTargets = [];
@@ -444,9 +661,9 @@ export class Game {
                     x: this.player.x,
                     y: this.player.y,
                     radius: 150,
-                    timer: 15.0, // Lasts 15 seconds
-                    hp: 150,     // Has 150 HP
-                    maxHp: 150
+                    timer: 20.0, // Increased to 20 seconds
+                    hp: 1000,    // Buffed to 1000 HP
+                    maxHp: 1000
                 };
                 // Removing instant shield/HP bonus - focus on regen and decoy
                 this.player.isAbilityActive = false; // Instant cast
@@ -492,10 +709,18 @@ export class Game {
             if (p.isEnemy) {
                 const dist = Math.hypot(p.x - this.player.x, p.y - this.player.y);
                 if (dist < p.radius + this.player.radius) {
-                    if (!this.player.isInvincible) {
+                    if (!this.player.isInvincible && !this.player.isDead) { // Added !isDead
                         this.player.hp -= 10;
                         this.triggerShake(0.2, 5);
-                        if (this.player.hp <= 0) this.gameOver();
+                        if (this.player.hp <= 0) {
+                            if (this.isMultiplayer) {
+                                this.player.hp = 0;
+                                this.player.isDead = true;
+                                this.checkAllPlayersDead();
+                            } else {
+                                this.gameOver();
+                            }
+                        }
                     }
                     p.markedForDeletion = true;
                 }
@@ -506,14 +731,22 @@ export class Game {
 
                     const dist = Math.hypot(p.x - e.x, p.y - e.y);
                     if (dist < p.radius + e.radius) {
-                        // Apply damage based on current penetration multiplier
-                        const finalDmg = p.damage * p.currentPenetration;
-                        e.hp -= finalDmg;
+                        // Collision Detected
+
+                        // DAMAGE LOGIC: Host Authority
+                        if (!this.isMultiplayer || this.networkSystem.isHost) {
+                            const finalDmg = p.damage * p.currentPenetration;
+                            e.hp -= finalDmg;
+                            if (e.hp <= 0) {
+                                this.handleEnemyDeath(e);
+                            }
+                        }
+
                         p.hitEnemies.add(e);
 
-                        // Visuals for hit
+                        // Visuals (Always show)
+                        const finalDmg = p.damage * p.currentPenetration; // For display
                         if (p.hitEnemies.size > 1) {
-                            // Penetration Hit feedback (Cyan sparks + Cyan damage number)
                             this.particleSystem.spawnExplosion(e.x, e.y, '#00ffff', 15);
                             this.particleSystem.spawnDamageNumber(e.x, e.y, finalDmg, '#00ffff');
                             this.triggerShake(0.05, 1);
@@ -522,18 +755,18 @@ export class Game {
                             this.particleSystem.spawnDamageNumber(e.x, e.y, finalDmg, '#ffffff');
                         }
 
-                        if (e.hp <= 0) {
-                            this.handleEnemyDeath(e);
-                        }
-
                         // Determine if we should keep going or stop
                         if (this.player.role === 'GIANT') {
                             // Heavy knockback for primary target
                             const gdx = e.x - p.x;
                             const gdy = e.y - p.y;
                             const gdist = Math.hypot(gdx, gdy) || 1;
-                            e.x += (gdx / gdist) * 60;
-                            e.y += (gdy / gdist) * 60;
+
+                            // Only apply physics if allowed
+                            if (!this.isMultiplayer || this.networkSystem.isHost) {
+                                e.x += (gdx / gdist) * 60;
+                                e.y += (gdy / gdist) * 60;
+                            }
 
                             // Giant bullets splash to NEARBY enemies with high force
                             this.triggerSplashDamage(p.x, p.y, 100, p.damage * 0.6, 80, e);
@@ -552,44 +785,84 @@ export class Game {
             }
         }
 
-        // Healing Station / Giant Invincibility Logic
-        if (this.player.healingStation && this.player.healingStation.active) {
-            const s = this.player.healingStation;
+        // Universal Healing Station Logic
+        const allStations: any[] = [];
+        if (this.player.healingStation?.active) allStations.push(this.player.healingStation);
+        this.remotePlayers.forEach(rp => {
+            if (rp.healingStation?.active) allStations.push(rp.healingStation);
+        });
+
+        allStations.forEach(s => {
             s.timer -= dt;
 
-            // Health Regen for Player
-            const dist = Math.hypot(this.player.x - s.x, this.player.y - s.y);
-            if (dist < s.radius) {
-                this.player.hp = Math.min(this.player.hp + 20 * dt, this.player.maxHp);
-            }
+            // Health Regen for ALL players (local and remote)
+            const checkPlayer = (p: any, isLocal: boolean) => {
+                if (p.isDead) return;
+                const dist = Math.hypot(p.x - s.x, p.y - s.y);
+                if (dist < s.radius) {
+                    p.hp = Math.min(p.hp + 20 * dt, p.maxHp);
+                    if (isLocal) {
+                        // Visual cues could go here
+                    }
+                }
+            };
 
-            // Station Destruction
+            checkPlayer(this.player, true);
+            this.remotePlayers.forEach(rp => checkPlayer(rp, false));
+
+            // Station Destruction (local check is enough for visibility)
             if (s.timer <= 0 || s.hp <= 0) {
                 s.active = false;
                 this.particleSystem.spawnExplosion(s.x, s.y, '#00ffaa', 30);
             }
-        }
+        });
 
         for (const e of this.enemies) {
-            const distToPlayer = Math.hypot(e.x - this.player.x, e.y - this.player.y);
-            const distToStation = (this.player.healingStation && this.player.healingStation.active)
-                ? Math.hypot(e.x - this.player.healingStation.x, e.y - this.player.healingStation.y)
-                : Infinity;
+            // Collision checks are now handled via allTargets logic basically, but we need damage application
+            const targets = [this.player];
+            if (this.player.healingStation?.active) targets.push(this.player.healingStation as any);
 
-            // Enemy Collision with Player
-            if (distToPlayer < e.radius + this.player.radius) {
-                const isInvincible = this.player.isInvincible || this.player.powerUps.shield.active;
-                if (!isInvincible) {
-                    this.player.hp -= 0.5;
-                    if (this.player.hp <= 0) this.gameOver();
-                }
-            }
+            targets.forEach(t => {
+                if (!t) return;
+                const dist = Math.hypot(e.x - t.x, e.y - t.y);
+                const isStation = (t as any).radius === 150 || (t as any).timer !== undefined; // Duck typing station
 
-            // Enemy Collision with Healing Station
-            if (this.player.healingStation && this.player.healingStation.active) {
-                if (distToStation < e.radius + 30) {
-                    this.player.healingStation.hp -= 50 * dt; // Rapid damage from enemies
+                if (dist < e.radius + (isStation ? 30 : this.player.radius)) {
+                    if (isStation) {
+                        (t as any).hp -= 50 * dt;
+                    } else {
+                        const isInvincible = this.player.isInvincible || this.player.powerUps.shield.active || this.player.isDead;
+                        if (!isInvincible) {
+                            this.player.hp -= 0.5;
+                            if (this.player.hp <= 0) {
+                                if (this.isMultiplayer) {
+                                    this.player.hp = 0;
+                                    this.player.isDead = true;
+                                    this.checkAllPlayersDead();
+                                } else {
+                                    this.gameOver();
+                                }
+                            }
+                        }
+                    }
                 }
+            });
+        }
+    }
+
+    checkAllPlayersDead() {
+        if (!this.player.isDead || this.isGameOver) return; // Only process if we are dead and game is NOT yet over
+
+        let allDead = true;
+        this.remotePlayers.forEach(rp => {
+            if (!rp.isDead) allDead = false;
+        });
+
+        if (allDead) {
+            console.log('[GAME] All players dead. Broadasting Game Over.');
+            this.gameOver();
+            if (this.isMultiplayer) {
+                this.networkSystem.broadcast('MISSION_FAILED', {});
             }
         }
     }
@@ -647,11 +920,11 @@ export class Game {
         if (mobileHUD) mobileHUD.style.display = 'none';
     }
 
-    gameOverTimer: number = 0;
+
 
     draw() {
         this.ctx.save();
-        this.ctx.textAlign = 'left'; // Reset defaults just in case
+        this.ctx.textAlign = 'left';
 
         if (this.shakeTimer > 0) {
             const dx = (Math.random() - 0.5) * this.shakeIntensity;
@@ -659,24 +932,50 @@ export class Game {
             this.ctx.translate(dx, dy);
         }
 
+        // Background
         this.ctx.fillStyle = '#050505';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
         this.drawGrid();
 
         if (this.isPlaying) {
             this.particleSystem.draw(this.ctx);
-            this.player.draw(this.ctx);
 
-            // HEALER Station visuals
-            if (this.player.healingStation && this.player.healingStation.active) {
+            // Draw all players
+            if (this.player) this.player.draw(this.ctx);
+            this.remotePlayers.forEach(rp => rp.draw(this.ctx));
+
+            // Remote Bullets
+            if (this.isMultiplayer) {
+                this.networkSystem.remotePlayers.forEach((state, _) => {
+                    if (state.isFiring && state.aimX && state.aimY) {
+                        this.ctx.strokeStyle = state.role === 'GUNNER' ? '#00ffff' :
+                            state.role === 'GIANT' ? '#ff4400' : '#00ffaa';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.globalAlpha = 0.6;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(state.x, state.y);
+                        const dx = state.aimX - state.x;
+                        const dy = state.aimY - state.y;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist > 0) {
+                            const bulletLength = Math.min(dist, 30);
+                            this.ctx.lineTo(state.x + (dx / dist) * bulletLength, state.y + (dy / dist) * bulletLength);
+                            this.ctx.stroke();
+                        }
+                        this.ctx.globalAlpha = 1;
+                    }
+                });
+            }
+
+            // Healer Station
+            if (this.player?.healingStation?.active) {
                 const s = this.player.healingStation;
                 this.ctx.beginPath();
                 this.ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
                 this.ctx.strokeStyle = '#00ffaa33';
                 this.ctx.lineWidth = 4;
                 this.ctx.stroke();
-
-                // Cross icon in center
                 this.ctx.fillStyle = '#00ffaa88';
                 this.ctx.fillRect(s.x - 5, s.y - 15, 10, 30);
                 this.ctx.fillRect(s.x - 15, s.y - 5, 30, 10);
@@ -697,29 +996,48 @@ export class Game {
                 this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
                 this.ctx.fillRect(tx, ty, barW, barH - 2);
                 this.ctx.fillStyle = '#ffffff';
-                this.ctx.fillRect(tx, ty, barW * (s.timer / 15.0), barH - 2);
-
-                this.ctx.fillStyle = '#fff';
-                this.ctx.font = '10px monospace';
-                this.ctx.fillText(`${Math.ceil(s.timer)}s`, tx + barW + 5, ty + 5);
+                this.ctx.fillRect(tx, ty, barW * (s.timer / 20.0), barH - 2);
             }
 
-            // GIANT Ability visuals
-            if (this.player.role === 'GIANT' && this.player.isAbilityActive) {
-                this.ctx.beginPath();
-                this.ctx.arc(this.player.x, this.player.y, 200, 0, Math.PI * 2);
-                this.ctx.setLineDash([5, 10]);
-                this.ctx.strokeStyle = '#ff4400cc';
-                this.ctx.lineWidth = 2;
-                this.ctx.stroke();
-                this.ctx.setLineDash([]);
-            }
+            // Sync and Draw Remote Healer Stations
+            this.remotePlayers.forEach(rp => {
+                if (rp.healingStation?.active) {
+                    const s = rp.healingStation;
+                    this.ctx.beginPath();
+                    this.ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = '#00ffaa33';
+                    this.ctx.lineWidth = 4;
+                    this.ctx.stroke();
+                    this.ctx.fillStyle = '#00ffaa88';
+                    this.ctx.fillRect(s.x - 5, s.y - 15, 10, 30);
+                    this.ctx.fillRect(s.x - 15, s.y - 5, 30, 10);
 
+                    // HEALTH BAR (Station)
+                    const barW = 60;
+                    const barH = 5;
+                    const bx = s.x - barW / 2;
+                    const by = s.y + 25;
+                    this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    this.ctx.fillRect(bx, by, barW, barH);
+                    this.ctx.fillStyle = '#00ffaa';
+                    this.ctx.fillRect(bx, by, barW * (s.hp / s.maxHp), barH);
+
+                    // TIMER BAR (Station)
+                    const tx = s.x - barW / 2;
+                    const ty = s.y + 35;
+                    this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    this.ctx.fillRect(tx, ty, barW, barH - 2);
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.fillRect(tx, ty, barW * (s.timer / 20.0), barH - 2);
+                }
+            });
+
+            // Enemies & Projectiles
             this.enemies.forEach(e => e.draw(this.ctx));
             this.projectiles.forEach(p => p.draw(this.ctx));
 
-            // Draw Targeting Reticles for Gunner
-            if (this.player.role === 'GUNNER' && this.player.isAbilityActive) {
+            // Gunner targeting
+            if (this.player?.role === 'GUNNER' && this.player.isAbilityActive) {
                 this.enemies.forEach(e => {
                     if (this.player.markedTargets.includes(e)) {
                         this.ctx.strokeStyle = '#ff0000';
@@ -727,190 +1045,83 @@ export class Game {
                         this.ctx.beginPath();
                         this.ctx.arc(e.x, e.y, e.radius + 10, 0, Math.PI * 2);
                         this.ctx.stroke();
-                        // Crosshair
-                        this.ctx.moveTo(e.x - 15, e.y); this.ctx.lineTo(e.x + 15, e.y);
-                        this.ctx.moveTo(e.x, e.y - 15); this.ctx.lineTo(e.x, e.y + 15);
-                        this.ctx.stroke();
                     }
                 });
-                // Overlay Vignette
-                const grad = this.ctx.createRadialGradient(
-                    this.canvas.width / 2, this.canvas.height / 2, 100,
-                    this.canvas.width / 2, this.canvas.height / 2, this.canvas.width
-                );
-                grad.addColorStop(0, 'rgba(0,0,0,0)');
-                grad.addColorStop(1, 'rgba(0,0,0,0.5)');
-                this.ctx.fillStyle = grad;
-                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-                this.ctx.fillStyle = '#fff';
-                this.ctx.font = '30px monospace';
-                this.ctx.fillText(`TARGETS: ${this.player.markedTargets.length}/${this.player.maxTargets} - PRESS [SPACE] TO FIRE`, this.canvas.width / 2 - 200, 100);
-
-                // Timer Bar
-                const maxTime = 3.0; // Synced with activateAbility
-                const timeRatio = Math.max(0, this.player.activeTimer / maxTime);
-                const barW = 400;
-                const barH = 10;
-                const barX = (this.canvas.width - barW) / 2;
-                const barY = 120;
-
-                this.ctx.fillStyle = '#550000';
-                this.ctx.fillRect(barX, barY, barW, barH);
-                this.ctx.fillStyle = '#00ffff'; // Cyan for Gunner theme
-                this.ctx.fillRect(barX, barY, barW * timeRatio, barH);
             }
+        }
 
-            this.ctx.restore();
+        // Restore context before drawing HUD (fixed UI)
+        this.ctx.restore();
 
-            // Boss HP Bar
-            const boss = this.enemies.find(e => e.type === 'BOSS') as Enemy;
-            if (boss) {
-                const hpPercent = Math.min(1, Math.max(0, boss.hp / boss.maxHp));
-                const barWidth = 600;
-                const barHeight = 20;
-                const x = (this.canvas.width - barWidth) / 2;
-                const y = 80;
-
-                this.ctx.fillStyle = '#440000';
-                this.ctx.fillRect(x, y, barWidth, barHeight);
-                this.ctx.fillStyle = '#ff0000';
-                this.ctx.fillRect(x, y, barWidth * hpPercent, barHeight);
-                this.ctx.strokeStyle = '#fff';
-                this.ctx.lineWidth = 2;
-                this.ctx.strokeRect(x, y, barWidth, barHeight);
-                this.ctx.fillStyle = '#fff';
-                this.ctx.font = '16px monospace';
-                this.ctx.fillText("BOSS ENTITY", x + barWidth / 2 - 50, y - 5);
-            }
-
+        if (this.isPlaying) {
             this.drawHUD();
-        } else {
-            this.ctx.restore();
-        }
 
-        // REFINED GAME OVER SCREEN
-        if (this.isGameOver) {
-            // Toned down background - Dark Blue/Black Gradient
-            const grad = this.ctx.createRadialGradient(
-                this.canvas.width / 2, this.canvas.height / 2, 100,
-                this.canvas.width / 2, this.canvas.height / 2, this.canvas.width
-            );
-            grad.addColorStop(0, 'rgba(10, 10, 20, 0.85)');
-            grad.addColorStop(1, 'rgba(0, 0, 5, 0.98)');
-            this.ctx.fillStyle = grad;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-            this.ctx.save();
-            this.ctx.shadowColor = '#00ffff'; // Cyan glow instead of aggressive red
-            this.ctx.shadowBlur = 30;
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.font = 'bold 80px "Courier New", monospace';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText("Mission Failed", this.canvas.width / 2, this.canvas.height / 2 - 100);
-            this.ctx.restore();
-
-            this.ctx.textAlign = 'center';
-
-            // Current Run Stats
-            this.ctx.fillStyle = '#ffaa00'; // Gold
-            this.ctx.font = 'bold 30px monospace';
-            this.ctx.fillText(`Waves Survived: ${this.waveCount}`, this.canvas.width / 2, this.canvas.height / 2 - 20);
-            this.ctx.fillText(`Score: ${this.score}`, this.canvas.width / 2, this.canvas.height / 2 + 20);
-
-            // High Scores
-            this.ctx.fillStyle = '#aaaaaa';
-            this.ctx.font = '20px monospace';
-            this.ctx.fillText(`Best Waves: ${this.highWave}  |  Best Score: ${this.highScore}`, this.canvas.width / 2, this.canvas.height / 2 + 60);
-
-            // Shards Tip
-            this.ctx.fillStyle = '#00A8FF'; // Explanatory Blue
-            this.ctx.font = 'italic 18px monospace';
-            this.ctx.fillText("Pro Tip: Collect Shards to buy upgrades in the Arsenal Shop (every 2 waves).", this.canvas.width / 2, this.canvas.height / 2 + 100);
-
-            if (this.gameOverTimer <= 0) {
-                const alpha = (Math.sin(performance.now() / 200) + 1) / 2 * 0.5 + 0.5;
-                this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-                this.ctx.font = '24px monospace';
-                const restartMsg = this.input.isMobile ? "TAP TO RESTART" : "PRESS [SPACE] TO RESTART";
-                this.ctx.fillText(restartMsg, this.canvas.width / 2, this.canvas.height / 2 + 160);
-
-                // Main Menu Option
-                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-                this.ctx.font = '18px monospace';
-                this.ctx.fillText("TAP/CLICK HERE FOR MAIN MENU", this.canvas.width / 2, this.canvas.height / 2 + 220);
+            if (this.player?.isDead) {
+                this.ctx.save();
+                this.ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+                this.ctx.fillRect(0, 0, this.canvas.width, 100);
+                this.ctx.textAlign = 'center';
+                this.ctx.fillStyle = '#fff';
+                this.ctx.font = 'bold 30px monospace';
+                this.ctx.fillText("YOU ARE DEAD - SPECTATING TEAMMATES", this.canvas.width / 2, 60);
+                this.ctx.font = '16px monospace';
+                this.ctx.fillText("Teammates can revive you from the Arsenal for 100 Shards", this.canvas.width / 2, 90);
+                this.ctx.restore();
             }
-            this.ctx.textAlign = 'left';
         }
 
+        if (this.isGameOver) {
+            this.ctx.fillStyle = 'rgba(0,0,0,0.85)';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillStyle = '#fff';
+            this.ctx.font = 'bold 60px monospace';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText("MISSION FAILED", this.canvas.width / 2, this.canvas.height / 2 - 50);
+            this.ctx.font = '24px monospace';
+            this.ctx.fillText(`Waves Survived: ${this.waveCount}`, this.canvas.width / 2, this.canvas.height / 2 + 20);
+            this.ctx.fillText("Press [SPACE] or Click to Restart", this.canvas.width / 2, this.canvas.height / 2 + 80);
+        }
+
+        if (this.paused) {
+            this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillStyle = '#0ff';
+            this.ctx.font = 'bold 50px monospace';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText("PAUSED", this.canvas.width / 2, this.canvas.height / 2);
+        }
+
+        // Custom Cursor
         this.ctx.strokeStyle = '#fff';
         this.ctx.lineWidth = 2;
         this.ctx.beginPath();
         this.ctx.arc(this.input.mouse.x, this.input.mouse.y, 8, 0, Math.PI * 2);
         this.ctx.stroke();
-
-        // VIBRANT PAUSE SCREEN
-        if (this.paused && !this.shopSystem.isShopOpen) {
-            this.ctx.fillStyle = 'rgba(10, 10, 30, 0.7)';
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-            for (let i = 0; i < this.canvas.height; i += 4) {
-                this.ctx.fillRect(0, i, this.canvas.width, 1);
-            }
-
-            this.ctx.save();
-            this.ctx.shadowColor = '#00ffff';
-            this.ctx.shadowBlur = 30;
-            this.ctx.fillStyle = '#00ffff';
-            this.ctx.font = 'bold 60px monospace';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText("PAUSED", this.canvas.width / 2, this.canvas.height / 2 - 20);
-            this.ctx.restore();
-
-            this.ctx.fillStyle = '#cccccc';
-            this.ctx.font = '20px monospace';
-            this.ctx.textAlign = 'center';
-            const resumeMsg = this.input.isMobile ? "Tap to Resume" : "Press [ESC] to Resume";
-            this.ctx.fillText(resumeMsg, this.canvas.width / 2, this.canvas.height / 2 + 30);
-
-            // Stats
-            this.ctx.font = '18px monospace';
-            this.ctx.fillStyle = '#ffaa00';
-            this.ctx.fillText(`Wave: ${this.waveCount} | Score: ${this.score} | HP: ${Math.floor(this.player.hp)}/${this.player.maxHp}`, this.canvas.width / 2, this.canvas.height / 2 + 70);
-
-            // Clickable Canvas Options
-            this.ctx.fillStyle = '#0ff';
-            this.ctx.font = 'bold 20px monospace';
-            this.ctx.fillText("> RESUME", this.canvas.width / 2, this.canvas.height / 2 + 110);
-            this.ctx.fillStyle = '#aaa';
-            this.ctx.fillText("> MAIN MENU", this.canvas.width / 2, this.canvas.height / 2 + 140);
-
-            this.ctx.textAlign = 'left';
-        }
-
-        if (this.isPlaying && !this.isGameOver && !this.paused) {
-            this.ctx.fillStyle = '#fff';
-            this.ctx.font = '16px monospace';
-            const cd = Math.ceil(this.player.abilityTimer);
-            const readyTag = this.input.isMobile ? "TAP" : "[SPACE]";
-            const ready = cd <= 0 ? `READY ${readyTag}` : `CD: ${cd}s`;
-            this.ctx.fillText(`Ability: ${ready}`, this.canvas.width - 200, this.canvas.height - 50);
-        }
     }
 
     drawHUD() {
+        if (!this.player) return;
+        this.ctx.save();
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '20px monospace';
         this.ctx.fillText(`Wave: ${this.waveCount}`, 20, 30);
         this.ctx.fillText(`Score: ${this.score}`, 20, 60);
-        this.ctx.fillText(`Shards: ${this.shopSystem.shards}`, 20, 90);
+        this.ctx.fillText(`Shards: ${this.shopSystem?.shards || 0}`, 20, 90);
         this.ctx.fillText(`Class: ${this.player.role}`, 20, 120);
-        this.ctx.fillText(`HP: ${Math.floor(this.player.hp)}/${this.player.maxHp}`, 20, 150);
+
+        if (this.player.isDead) {
+            this.ctx.fillStyle = '#f00';
+            this.ctx.fillText(`STATUS: DEAD (SPECTATING)`, 20, 150);
+        } else {
+            this.ctx.fillStyle = '#fff';
+            this.ctx.fillText(`HP: ${Math.floor(this.player.hp)}/${this.player.maxHp}`, 20, 150);
+        }
+
         this.ctx.fillStyle = '#ff0';
         this.ctx.fillText(`[X] ARSENAL`, 20, 180);
 
         this.drawPowerUpStatus();
+        this.ctx.restore();
     }
 
     drawPowerUpStatus() {
@@ -929,8 +1140,6 @@ export class Game {
         activePUs.forEach((pu, i) => {
             const timer = (this.player.powerUps as any)[pu.id].timer;
             const x = startX + i * 70;
-
-            // Icon background
             this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
             this.ctx.beginPath();
             this.ctx.arc(x, y, 25, 0, Math.PI * 2);
@@ -938,19 +1147,14 @@ export class Game {
             this.ctx.strokeStyle = pu.color;
             this.ctx.lineWidth = 2;
             this.ctx.stroke();
-
-            // Icon text
             this.ctx.fillStyle = pu.color;
             this.ctx.font = 'bold 24px monospace';
             this.ctx.textAlign = 'center';
             this.ctx.fillText(pu.icon, x, y + 8);
-
-            // Timer
             this.ctx.fillStyle = '#fff';
             this.ctx.font = '14px monospace';
             this.ctx.fillText(`${timer.toFixed(1)}s`, x, y + 45);
         });
-        this.ctx.textAlign = 'left';
     }
 
     drawGrid() {
@@ -971,3 +1175,4 @@ export class Game {
         }
     }
 }
+
