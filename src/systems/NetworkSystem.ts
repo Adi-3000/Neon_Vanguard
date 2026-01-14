@@ -58,10 +58,19 @@ export class NetworkSystem {
 
             this.peer = new Peer(shortId, {
                 debug: 2,
+                host: '0.peerjs.com',
+                port: 443,
+                path: '/',
+                secure: true,
                 config: {
-                    'iceServers': [
+                    iceCandidatePoolSize: 10,
+                    iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' },
+                        { urls: 'stun:stun.services.mozilla.com' },
                     ]
                 }
             });
@@ -112,10 +121,19 @@ export class NetworkSystem {
             console.log('[NETWORK] Joining room:', id);
             this.peer = new Peer({
                 debug: 2,
+                host: '0.peerjs.com',
+                port: 443,
+                path: '/',
+                secure: true,
                 config: {
-                    'iceServers': [
+                    iceCandidatePoolSize: 10,
+                    iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' },
+                        { urls: 'stun:stun.services.mozilla.com' },
                     ]
                 }
             });
