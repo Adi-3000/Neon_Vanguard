@@ -139,10 +139,22 @@ export class MenuSystem {
             </div>
         `;
 
-        document.getElementById('btn-create')!.onclick = async () => {
-            const roomId = await this.game.networkSystem.createRoom();
-            this.showLobby(true, roomId);
-        };
+        const createBtn = document.getElementById('btn-create') as HTMLButtonElement;
+        if (createBtn) {
+            createBtn.onclick = async () => {
+                createBtn.innerText = 'CREATING...';
+                createBtn.disabled = true;
+                try {
+                    const roomId = await this.game.networkSystem.createRoom();
+                    this.showLobby(true, roomId);
+                } catch (err) {
+                    console.error('[MENU] Failed to create room:', err);
+                    alert("Failed to create room. Please check your internet connection and try again.");
+                    createBtn.innerText = 'CREATE ROOM';
+                    createBtn.disabled = false;
+                }
+            };
+        }
 
         document.getElementById('btn-join')!.onclick = () => {
             this.showJoinScreen();

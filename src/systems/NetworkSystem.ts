@@ -46,10 +46,37 @@ export class NetworkSystem {
     constructor() { }
 
     async createRoom(): Promise<string> {
-        return new Promise((resolve) => {
+        // Cleanup existing peer if any
+        if (this.peer) {
+            this.peer.destroy();
+            this.peer = null;
+        }
+
+        return new Promise((resolve, reject) => {
             const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
-            this.peer = new Peer(shortId);
+            console.log('[NETWORK] Creating room with ID:', shortId);
+
+            this.peer = new Peer(shortId, {
+                debug: 2,
+                config: {
+                    'iceServers': [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                    ]
+                }
+            });
+
+            const timeout = setTimeout(() => {
+                if (this.peer && !this.peer.open) {
+                    console.error('[NETWORK] Creation timed out');
+                    this.peer.destroy();
+                    reject(new Error('TIMEOUT'));
+                }
+            }, 10000);
+
             this.peer.on('open', (id) => {
+                clearTimeout(timeout);
+                console.log('[NETWORK] Peer opened successfully:', id);
                 this.roomId = id;
                 this.myId = id;
                 this.isHost = true;
@@ -57,9 +84,15 @@ export class NetworkSystem {
             });
 
             this.peer.on('error', (err: any) => {
+                clearTimeout(timeout);
+                console.error('[NETWORK] Peer error:', err.type, err);
+
                 if (err.type === 'unavailable-id') {
-                    // Try again with a different ID if taken
-                    this.createRoom().then(resolve);
+                    // Try again once or fail
+                    this.createRoom().then(resolve).catch(reject);
+                } else {
+                    if (this.peer) this.peer.destroy();
+                    reject(err);
                 }
             });
 
@@ -70,18 +103,46 @@ export class NetworkSystem {
     }
 
     async joinRoom(id: string): Promise<boolean> {
+        if (this.peer) {
+            this.peer.destroy();
+            this.peer = null;
+        }
+
         return new Promise((resolve) => {
-            this.peer = new Peer();
+            console.log('[NETWORK] Joining room:', id);
+            this.peer = new Peer({
+                debug: 2,
+                config: {
+                    'iceServers': [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                    ]
+                }
+            });
+
+            const timeout = setTimeout(() => {
+                if (this.peer && !this.peer.open) {
+                    this.peer.destroy();
+                    resolve(false);
+                }
+            }, 10000);
+
             this.peer.on('open', (myId) => {
+                clearTimeout(timeout);
                 this.myId = myId;
                 this.roomId = id;
                 this.isHost = false;
-                const conn = this.peer!.connect(id);
+                console.log('[NETWORK] My Peer ID (Guest):', myId);
+                const conn = this.peer!.connect(id, { reliable: true });
                 this.handleConnection(conn);
                 resolve(true);
             });
 
-            this.peer.on('error', () => resolve(false));
+            this.peer.on('error', (err) => {
+                clearTimeout(timeout);
+                console.error('[NETWORK] Join error:', err);
+                resolve(false);
+            });
         });
     }
 
