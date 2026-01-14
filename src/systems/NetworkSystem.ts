@@ -161,6 +161,10 @@ export class NetworkSystem {
         if (data.type === 'POWERUP_PAUSE') {
             window.dispatchEvent(new CustomEvent('networkPowerUpPause', { detail: data.payload }));
         }
+
+        if (data.type === 'TRIGGER_POWERUP') {
+            window.dispatchEvent(new CustomEvent('networkTriggerPowerup', { detail: data.payload }));
+        }
     }
 
     broadcast(type: string, payload: any, exclude: string[] = []) {

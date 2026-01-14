@@ -155,8 +155,15 @@ export class Game {
             console.log('[GAME] Powerup Pause event received');
             this.paused = true;
             setTimeout(() => {
-                if (this.isPlaying && !this.isGameOver) this.paused = false;
-            }, (e.detail.duration || 5) * 1000);
+                if (this.isPlaying && !this.isGameOver) {
+                    this.paused = false;
+                }
+            }, (e.detail.duration || 4) * 1000);
+        });
+
+        window.addEventListener('networkTriggerPowerup', () => {
+            console.log('[GAME] Trigger Powerup event received');
+            this.shopSystem.openPowerUpChoice();
         });
 
         console.log('[GAME] Constructor complete');
@@ -466,14 +473,24 @@ export class Game {
             });
         }
 
-        this.waveTimer += dt;
-        if (this.waveTimer >= this.waveDuration) {
-            this.waveTimer = 0;
-            this.waveCount++;
-            this.waveManager.wave = this.waveCount; // Sync wave count
-            if (this.waveCount % 2 === 0) { // Every 2 waves, get FREE powerup
-                this.shopSystem.openPowerUpChoice();
+        // Wave Logic: Host Authority in Multiplayer
+        const isAuthoritative = !this.isMultiplayer || this.networkSystem.isHost;
+
+        if (isAuthoritative) {
+            this.waveTimer += dt;
+            if (this.waveTimer >= this.waveDuration) {
+                this.waveTimer = 0;
+                this.waveCount++;
+                this.waveManager.wave = this.waveCount; // Sync wave count
+
+                if (this.waveCount % 2 === 0) { // Every 2 waves, get FREE powerup
+                    if (this.isMultiplayer) {
+                        this.networkSystem.broadcast('TRIGGER_POWERUP', {});
+                    }
+                    this.shopSystem.openPowerUpChoice();
+                }
             }
+            this.waveManager.update(dt, this.enemies);
         }
 
         const stats = this.entropySystem.getEnemyStatsMultiplier();
@@ -486,11 +503,6 @@ export class Game {
         // Boundary Clamping
         this.player.x = Math.max(this.player.radius, Math.min(this.canvas.width - this.player.radius, this.player.x));
         this.player.y = Math.max(this.player.radius, Math.min(this.canvas.height - this.player.radius, this.player.y));
-
-        // Updates
-        if (!this.isMultiplayer || this.networkSystem.isHost) {
-            this.waveManager.update(dt, this.enemies);
-        }
 
         const allTargets: any[] = [];
         const activeStations: any[] = [];
