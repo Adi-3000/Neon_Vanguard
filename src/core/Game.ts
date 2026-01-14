@@ -136,6 +136,10 @@ export class Game {
                 if (remote) {
                     remote.isDead = false;
                     remote.hp = remote.maxHp;
+                    // Force state update for next PLAYER_SYNC
+                    if (this.networkSystem.isHost) {
+                        // The remote will naturally sync its own isDead=false on next update
+                    }
                     this.particleSystem.spawnExplosion(remote.x, remote.y, '#00ff00', 30);
                 }
             }

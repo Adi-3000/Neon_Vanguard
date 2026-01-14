@@ -190,7 +190,14 @@ export class ShopSystem {
             // Multiplayer Selection Timer
             this.timeLeft = 4; // 4 seconds to choose
             if (this.game.networkSystem.isHost) {
+                // Host manually sets pause because broadcast doesn't reach self
+                this.game.paused = true;
                 this.game.networkSystem.broadcast('POWERUP_PAUSE', { duration: 4 });
+                setTimeout(() => {
+                    if (this.game.isPlaying && !this.game.isGameOver) {
+                        this.game.paused = false;
+                    }
+                }, 4000);
             }
             if (this.selectionTimer) clearInterval(this.selectionTimer);
             this.selectionTimer = setInterval(() => {
@@ -211,9 +218,7 @@ export class ShopSystem {
         this.isShopOpen = false;
         if (this.selectionTimer) clearInterval(this.selectionTimer);
         this.selectionTimer = null;
-        if (!this.game.isMultiplayer) {
-            this.game.paused = false;
-        }
+        this.game.paused = false;
         if (!this.game.player.powerUps.shield.active && this.game.player.role !== 'HEALER') {
             this.game.player.isInvincible = false;
         }
