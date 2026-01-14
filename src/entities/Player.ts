@@ -188,6 +188,24 @@ export class Player extends Entity {
     }
 
     draw(ctx: CanvasRenderingContext2D) {
+        // Identify Local Player in Multiplayer
+        const isLocalPlayer = (ctx.canvas as any)._gameRef?.player === this;
+        const isMultiplayer = (ctx.canvas as any)._gameRef?.isMultiplayer;
+
+        if (isLocalPlayer && isMultiplayer) {
+            ctx.save();
+            // Subtle Dotted Identification Circle
+            const ringSize = this.radius + 15;
+            const pulse = 1 + Math.sin(Date.now() * 0.005) * 0.1;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, ringSize * pulse, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 3]);
+            ctx.stroke();
+            ctx.restore();
+        }
+
         // Ability Ready Indicator (Ring)
         if (this.abilityTimer <= 0) {
             ctx.beginPath();

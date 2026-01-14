@@ -87,6 +87,7 @@ export class NetworkSystem {
             if (!this.connections.find(c => c.peer === conn.peer)) {
                 this.connections.push(conn);
                 console.log('[NETWORK] Added to connections. Total connections:', this.connections.length);
+                window.dispatchEvent(new CustomEvent('networkConnectionChanged'));
             }
         });
 
@@ -100,6 +101,7 @@ export class NetworkSystem {
             this.connections = this.connections.filter(c => c.peer !== conn.peer);
             this.remotePlayers.delete(conn.peer);
             this.playerRoles.delete(conn.peer);
+            window.dispatchEvent(new CustomEvent('networkConnectionChanged'));
         });
 
         conn.on('error', (err: any) => {
@@ -154,6 +156,10 @@ export class NetworkSystem {
 
         if (data.type === 'RESTART_MISSION') {
             window.dispatchEvent(new CustomEvent('networkRestartMission', { detail: data.payload }));
+        }
+
+        if (data.type === 'POWERUP_PAUSE') {
+            window.dispatchEvent(new CustomEvent('networkPowerUpPause', { detail: data.payload }));
         }
     }
 

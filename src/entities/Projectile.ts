@@ -6,14 +6,19 @@ export class Projectile extends Entity {
     speed: number = 900;
     damage: number = 40;
     isEnemy: boolean = false;
+    ownerRole: string = 'GUNNER';
+    ownerPenetration: number = 0;
 
     // Penetration logic
     hitEnemies: Set<any> = new Set();
     currentPenetration: number = 1.0;
 
-    constructor(x: number, y: number, targetX: number, targetY: number, isEnemy: boolean = false) {
+    constructor(x: number, y: number, targetX: number, targetY: number, isEnemy: boolean = false, ownerRole: string = 'GUNNER', ownerPen: number = 0) {
         super(x, y, 4, isEnemy ? '#ff0000' : '#ffff00');
         this.isEnemy = isEnemy;
+        this.ownerRole = ownerRole;
+        this.ownerPenetration = ownerPen;
+        this.currentPenetration = 1.0;
 
         const dx = targetX - x;
         const dy = targetY - y;

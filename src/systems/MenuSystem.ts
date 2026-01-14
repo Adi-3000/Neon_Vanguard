@@ -15,6 +15,12 @@ export class MenuSystem {
                 this.updateLobbyUI();
             }
         });
+
+        window.addEventListener('networkConnectionChanged', () => {
+            if (document.getElementById('lobby-id')) {
+                this.updateLobbyUI();
+            }
+        });
     }
 
     showMainMenu() {
@@ -278,7 +284,15 @@ export class MenuSystem {
 
     updateLobbyUI() {
         const container = document.getElementById('class-cards');
-        if (!container) return;
+        const membersDiv = document.getElementById('lobby-members');
+        if (!container || !membersDiv) return;
+
+        const playerCount = this.game.networkSystem.connections.length + 1;
+        membersDiv.innerHTML = `
+            <div style="background: rgba(0,255,255,0.1); border: 1px solid #0ff; padding: 0.5rem 1rem; color: #0ff;">
+                PLAYERS IN ROOM: ${playerCount} / 3
+            </div>
+        `;
 
         container.innerHTML = `
             ${this.createClassCard('GUNNER', 'DPS', 'Bullet Time', '#00ffff')}

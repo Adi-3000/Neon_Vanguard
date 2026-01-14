@@ -175,11 +175,14 @@ export class ShopSystem {
         this.currentMode = 'POWERUP';
         this.isShopOpen = true;
         if (!this.game.isMultiplayer) {
-            this.game.paused = true;
+            // Note: MenuSystem/ShopSystem handles internal pausing for singleplayer
             this.game.input.reset();
         } else {
             // Multiplayer Selection Timer
             this.timeLeft = 5; // 5 seconds to choose
+            if (this.game.networkSystem.isHost) {
+                this.game.networkSystem.broadcast('POWERUP_PAUSE', { duration: 5 });
+            }
             if (this.selectionTimer) clearInterval(this.selectionTimer);
             this.selectionTimer = setInterval(() => {
                 this.timeLeft--;
