@@ -133,9 +133,27 @@ export class NetworkSystem {
                 this.roomId = id;
                 this.isHost = false;
                 console.log('[NETWORK] My Peer ID (Guest):', myId);
+
                 const conn = this.peer!.connect(id, { reliable: true });
-                this.handleConnection(conn);
-                resolve(true);
+
+                // Set a timeout for the actual connection to the host
+                const connTimeout = setTimeout(() => {
+                    console.error('[NETWORK] Connection to host timed out');
+                    resolve(false);
+                }, 8000);
+
+                conn.on('open', () => {
+                    clearTimeout(connTimeout);
+                    console.log('[NETWORK] Connected to host successfully');
+                    this.handleConnection(conn);
+                    resolve(true);
+                });
+
+                conn.on('error', (err) => {
+                    clearTimeout(connTimeout);
+                    console.error('[NETWORK] Connection to host error:', err);
+                    resolve(false);
+                });
             });
 
             this.peer.on('error', (err) => {
@@ -149,20 +167,25 @@ export class NetworkSystem {
     private handleConnection(conn: any) {
         console.log('[NETWORK] handleConnection called for peer:', conn.peer);
 
-        conn.on('open', () => {
-            console.log('[NETWORK] Connection opened with peer:', conn.peer);
+        const registerConnection = () => {
+            console.log('[NETWORK] Registering open connection for peer:', conn.peer);
             if (!this.connections.find(c => c.peer === conn.peer)) {
                 this.connections.push(conn);
-                console.log('[NETWORK] Added to connections. Total connections:', this.connections.length);
+                console.log('[NETWORK] Connection registered. Total:', this.connections.length);
                 if (this.isHost) {
-                    // Send existing roles to the new player
                     this.playerRoles.forEach((role, id) => {
                         conn.send({ type: 'ROLE_PICKED', payload: { id, role } });
                     });
                 }
                 window.dispatchEvent(new CustomEvent('networkConnectionChanged'));
             }
-        });
+        };
+
+        if (conn.open) {
+            registerConnection();
+        } else {
+            conn.on('open', registerConnection);
+        }
 
         conn.on('data', (data: any) => {
             console.log('[NETWORK] Received data from', conn.peer, ':', data);

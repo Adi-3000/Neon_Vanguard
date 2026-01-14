@@ -216,18 +216,30 @@ export class MenuSystem {
             </div>
         `;
 
-        document.getElementById('btn-confirm-join')!.onclick = () => {
-            const input = document.getElementById('join-room-id') as HTMLInputElement;
-            const roomId = input.value.trim();
-            if (roomId) {
-                this.game.networkSystem.joinRoom(roomId).then((success: boolean) => {
-                    if (success) this.showLobby(false, roomId);
-                    else alert("Failed to join room. Verify the ID.");
-                });
-            } else {
-                alert("Please enter a valid Room ID.");
-            }
-        };
+        const confirmBtn = document.getElementById('btn-confirm-join') as HTMLButtonElement;
+        if (confirmBtn) {
+            confirmBtn.onclick = () => {
+                const input = document.getElementById('join-room-id') as HTMLInputElement;
+                const roomId = input.value.trim().toUpperCase(); // Ensure uppercase to match host
+
+                if (roomId) {
+                    confirmBtn.innerText = 'CONNECTING...';
+                    confirmBtn.disabled = true;
+
+                    this.game.networkSystem.joinRoom(roomId).then((success: boolean) => {
+                        if (success) {
+                            this.showLobby(false, roomId);
+                        } else {
+                            alert("Failed to join room. Verify the Room ID is correct and the host is active.");
+                            confirmBtn.innerText = 'CONNECT TO HOST';
+                            confirmBtn.disabled = false;
+                        }
+                    });
+                } else {
+                    alert("Please enter a valid Room ID.");
+                }
+            };
+        }
 
         document.getElementById('btn-join-back')!.onclick = () => this.showMultiplayerMenu();
     }
