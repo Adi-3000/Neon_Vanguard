@@ -163,7 +163,16 @@ export class ShopSystem {
         if (this.game.player.isDead) return;
         this.currentMode = 'ARSENAL';
         this.isShopOpen = true;
-        if (!this.game.isMultiplayer) {
+        let shouldPause = !this.game.isMultiplayer;
+        if (this.game.isMultiplayer) {
+            let aliveCount = this.game.player.isDead ? 0 : 1;
+            this.game.remotePlayers.forEach((p: any) => {
+                if (!p.isDead) aliveCount++;
+            });
+            if (aliveCount <= 1) shouldPause = true;
+        }
+
+        if (shouldPause) {
             this.game.paused = true;
             this.game.input.reset();
         }
@@ -179,9 +188,9 @@ export class ShopSystem {
             this.game.input.reset();
         } else {
             // Multiplayer Selection Timer
-            this.timeLeft = 5; // 5 seconds to choose
+            this.timeLeft = 4; // 4 seconds to choose
             if (this.game.networkSystem.isHost) {
-                this.game.networkSystem.broadcast('POWERUP_PAUSE', { duration: 5 });
+                this.game.networkSystem.broadcast('POWERUP_PAUSE', { duration: 4 });
             }
             if (this.selectionTimer) clearInterval(this.selectionTimer);
             this.selectionTimer = setInterval(() => {
