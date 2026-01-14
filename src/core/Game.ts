@@ -165,6 +165,31 @@ export class Game {
             }, (e.detail.duration || 4) * 1000);
         });
 
+        window.addEventListener('networkAbilityActivated', (e: any) => {
+            const { role, x, y, peerId } = e.detail;
+            let remote = this.remotePlayers.get(peerId);
+            if (!remote) return;
+
+            console.log(`[GAME] Remote ability activated: ${role} from ${peerId}`);
+
+            if (role === 'GIANT') {
+                remote.isInvincible = true;
+                remote.activeTimer = 5.0;
+                this.triggerSplashDamage(x, y, 250, 150, 120);
+                this.triggerShake(0.8, 25);
+            } else if (role === 'HEALER') {
+                remote.healingStation = {
+                    active: true,
+                    x: x,
+                    y: y,
+                    radius: 150,
+                    timer: 20.0,
+                    hp: 1000,
+                    maxHp: 1000
+                };
+            }
+        });
+
         window.addEventListener('networkTriggerPowerup', () => {
             console.log('[GAME] Trigger Powerup event received');
             this.shopSystem.openPowerUpChoice();
@@ -464,18 +489,29 @@ export class Game {
             if (this.fireTimer > this.fireRate) this.fireTimer = this.fireRate;
         }
 
-        // Sword Damage Logic
-        if (this.player.powerUps.sword.active) {
-            const sx = this.player.x + Math.cos(this.player.swordAngle) * 60;
-            const sy = this.player.y + Math.sin(this.player.swordAngle) * 60;
+        // Universal Sword Damage Logic (Host Authority)
+        const playersWithSwords: Player[] = [];
+        if (this.player.powerUps.sword.active) playersWithSwords.push(this.player);
+        if (this.isMultiplayer && this.networkSystem.isHost) {
+            this.remotePlayers.forEach(rp => {
+                if (rp.powerUps.sword.active) playersWithSwords.push(rp);
+            });
+        }
+
+        playersWithSwords.forEach(p => {
+            const sx = p.x + Math.cos(p.swordAngle) * 60;
+            const sy = p.y + Math.sin(p.swordAngle) * 60;
             this.enemies.forEach(e => {
                 const dist = Math.hypot(e.x - sx, e.y - sy);
                 if (dist < e.radius + 20) {
-                    e.hp -= 150 * dt; // High DPS close range
-                    if (e.hp <= 0) this.handleEnemyDeath(e);
+                    if (!this.isMultiplayer || this.networkSystem.isHost) {
+                        e.hp -= 150 * dt;
+                        if (e.hp <= 0) this.handleEnemyDeath(e);
+                    }
+                    // Visuals for sword hit can be added here
                 }
             });
-        }
+        });
 
         // Wave Logic: Host Authority in Multiplayer
         const isAuthoritative = !this.isMultiplayer || this.networkSystem.isHost;
@@ -585,7 +621,13 @@ export class Game {
                 isFiring: this.input.mouse.isDown,
                 aimX: this.input.mouse.x,
                 aimY: this.input.mouse.y,
-                healingStation: this.player.role === 'HEALER' ? this.player.healingStation : null
+                healingStation: this.player.role === 'HEALER' ? this.player.healingStation : null,
+                powerUps: {
+                    shield: this.player.powerUps.shield.active,
+                    sword: this.player.powerUps.sword.active,
+                    doubleFire: this.player.powerUps.doubleFire.active,
+                    glassCannon: this.player.powerUps.glassCannon.active
+                }
             });
 
             // Update remote players
@@ -600,6 +642,13 @@ export class Game {
                 remotePlayer.hp = state.hp;
                 remotePlayer.maxHp = state.maxHp;
                 remotePlayer.isDead = state.isDead;
+
+                if (state.powerUps) {
+                    remotePlayer.powerUps.shield.active = !!state.powerUps.shield;
+                    remotePlayer.powerUps.sword.active = !!state.powerUps.sword;
+                    remotePlayer.powerUps.doubleFire.active = !!state.powerUps.doubleFire;
+                    remotePlayer.powerUps.glassCannon.active = !!state.powerUps.glassCannon;
+                }
                 if (state.healingStation !== undefined) {
                     remotePlayer.healingStation = state.healingStation as any;
                 }
@@ -675,6 +724,14 @@ export class Game {
     }
 
     activateAbility() {
+        if (this.isMultiplayer) {
+            this.networkSystem.broadcast('ABILITY_ACTIVATED', {
+                role: this.player.role,
+                x: this.player.x,
+                y: this.player.y
+            });
+        }
+
         switch (this.player.role) {
             case 'GUNNER':
                 this.player.activeTimer = 3.0; // Max time to targets
@@ -911,17 +968,23 @@ export class Game {
             const dist = Math.hypot(dx, dy);
 
             if (dist < radius + e.radius) {
-                e.hp -= damage;
+                if (!this.isMultiplayer || this.networkSystem.isHost) {
+                    e.hp -= damage;
+                }
 
                 // Knockback
                 if (knockbackForce > 0 && dist > 0) {
                     const ratio = knockbackForce * (1 - dist / (radius + e.radius));
-                    e.x += (dx / dist) * ratio;
-                    e.y += (dy / dist) * ratio;
+                    if (!this.isMultiplayer || this.networkSystem.isHost) {
+                        e.x += (dx / dist) * ratio;
+                        e.y += (dy / dist) * ratio;
+                    }
                 }
 
                 this.particleSystem.spawnDamageNumber(e.x, e.y, damage, '#ffaa00');
-                if (e.hp <= 0) this.handleEnemyDeath(e);
+                if (!this.isMultiplayer || this.networkSystem.isHost) {
+                    if (e.hp <= 0) this.handleEnemyDeath(e);
+                }
             }
         });
     }

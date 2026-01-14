@@ -111,6 +111,11 @@ export class MenuSystem {
     }
 
     showMultiplayerMenu() {
+        // Clear any old multiplayer state
+        this.game.networkSystem.playerRoles.clear();
+        this.game.networkSystem.myRole = null;
+        this.game.networkSystem.connections = []; // Reset connections just in case
+
         this.uiContainer.innerHTML = `
             <div style="
                 position: absolute; 
@@ -253,7 +258,7 @@ export class MenuSystem {
                 </div>
 
                 <div style="margin-top: 2rem;">
-                    ${isHost ? '<button id="btn-start-multi" style="background: #0ff; color: #000; border: none; padding: 1rem 3rem; font-weight: bold; cursor: pointer;">START MISSION</button>' : '<p style="color: #0ff;">Waiting for host to start...</p>'}
+                    ${isHost ? '<button id="btn-start-multi" disabled style="background: #0ff; color: #000; border: none; padding: 1rem 3rem; font-weight: bold; cursor: not-allowed; opacity: 0.4;">WAITING FOR ALL PLAYERS...</button>' : '<p style="color: #0ff;">Waiting for host to start...</p>'}
                 </div>
             </div>
         `;
@@ -271,6 +276,15 @@ export class MenuSystem {
 
         if (isHost) {
             document.getElementById('btn-start-multi')!.onclick = () => {
+                // Final validation: check if everyone actually has a role
+                const allPlayers = this.game.networkSystem.connections.length + 1;
+                const playersWithRoles = this.game.networkSystem.playerRoles.size;
+
+                if (playersWithRoles < allPlayers) {
+                    console.warn('[MENU] Cannot start: not all players have picked roles.');
+                    return;
+                }
+
                 this.game.networkSystem.connections.forEach((conn: any) => {
                     const clientRole = this.game.networkSystem.playerRoles.get(conn.peer) || 'GUNNER';
                     conn.send({ type: 'START_MISSION', payload: { role: clientRole } });
@@ -299,6 +313,26 @@ export class MenuSystem {
             ${this.createClassCard('GIANT', 'Tank', 'Slam', '#ff4400')}
             ${this.createClassCard('HEALER', 'Support', 'Medic Station', '#00ffaa')}
         `;
+
+        // Validation for host start button
+        const startBtn = document.getElementById('btn-start-multi') as HTMLButtonElement;
+        if (startBtn) {
+            const allPlayers = this.game.networkSystem.connections.length + 1;
+            const playersWithRoles = this.game.networkSystem.playerRoles.size;
+            const canStart = allPlayers > 0 && playersWithRoles === allPlayers;
+
+            if (!canStart) {
+                startBtn.disabled = true;
+                startBtn.style.opacity = '0.4';
+                startBtn.style.cursor = 'not-allowed';
+                startBtn.innerText = 'WAITING FOR ALL PLAYERS...';
+            } else {
+                startBtn.disabled = false;
+                startBtn.style.opacity = '1';
+                startBtn.style.cursor = 'pointer';
+                startBtn.innerText = 'START MISSION';
+            }
+        }
 
         this.attachMultiplayerListeners();
     }

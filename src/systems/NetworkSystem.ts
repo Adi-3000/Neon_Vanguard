@@ -14,6 +14,12 @@ export interface PlayerState {
     aimY: number;
     score: number;
     healingStation?: { active: boolean, x: number, y: number, radius: number, hp: number, maxHp: number, timer?: number } | null;
+    powerUps?: {
+        shield: boolean;
+        sword: boolean;
+        doubleFire: boolean;
+        glassCannon: boolean;
+    } | null;
 }
 
 export interface GameState {
@@ -87,6 +93,12 @@ export class NetworkSystem {
             if (!this.connections.find(c => c.peer === conn.peer)) {
                 this.connections.push(conn);
                 console.log('[NETWORK] Added to connections. Total connections:', this.connections.length);
+                if (this.isHost) {
+                    // Send existing roles to the new player
+                    this.playerRoles.forEach((role, id) => {
+                        conn.send({ type: 'ROLE_PICKED', payload: { id, role } });
+                    });
+                }
                 window.dispatchEvent(new CustomEvent('networkConnectionChanged'));
             }
         });
@@ -122,6 +134,10 @@ export class NetworkSystem {
             // Store the role for this player
             this.playerRoles.set(data.payload.id, data.payload.role);
             window.dispatchEvent(new CustomEvent('networkRolePicked', { detail: data.payload }));
+            if (this.isHost) {
+                // Rebroadcast to all other clients
+                this.broadcast('ROLE_PICKED', data.payload, [peerId]);
+            }
         }
 
         if (data.type === 'START_MISSION' && !this.isHost) {
@@ -147,6 +163,13 @@ export class NetworkSystem {
             window.dispatchEvent(new CustomEvent('networkRevivePlayer', { detail: data.payload }));
             if (this.isHost) {
                 this.broadcast('REVIVE_PLAYER', data.payload, [peerId]);
+            }
+        }
+
+        if (data.type === 'ABILITY_ACTIVATED') {
+            window.dispatchEvent(new CustomEvent('networkAbilityActivated', { detail: { ...data.payload, peerId } }));
+            if (this.isHost) {
+                this.broadcast('ABILITY_ACTIVATED', data.payload, [peerId]);
             }
         }
 
