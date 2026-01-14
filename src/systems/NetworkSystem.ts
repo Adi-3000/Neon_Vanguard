@@ -46,7 +46,6 @@ export class NetworkSystem {
     constructor() { }
 
     async createRoom(): Promise<string> {
-        // Cleanup existing peer if any
         if (this.peer) {
             this.peer.destroy();
             this.peer = null;
@@ -54,25 +53,11 @@ export class NetworkSystem {
 
         return new Promise((resolve, reject) => {
             const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
-            console.log('[NETWORK] Creating room with ID:', shortId);
+            console.log('[NETWORK] Generating Room ID:', shortId);
 
+            // Reverting to standard PeerJS defaults for maximum compatibility
             this.peer = new Peer(shortId, {
-                debug: 2,
-                host: '0.peerjs.com',
-                port: 443,
-                path: '/',
-                secure: true,
-                config: {
-                    iceCandidatePoolSize: 10,
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
-                        { urls: 'stun:stun3.l.google.com:19302' },
-                        { urls: 'stun:stun4.l.google.com:19302' },
-                        { urls: 'stun:stun.services.mozilla.com' },
-                    ]
-                }
+                debug: 2
             });
 
             const timeout = setTimeout(() => {
@@ -120,22 +105,7 @@ export class NetworkSystem {
         return new Promise((resolve) => {
             console.log('[NETWORK] Joining room:', id);
             this.peer = new Peer({
-                debug: 2,
-                host: '0.peerjs.com',
-                port: 443,
-                path: '/',
-                secure: true,
-                config: {
-                    iceCandidatePoolSize: 10,
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
-                        { urls: 'stun:stun3.l.google.com:19302' },
-                        { urls: 'stun:stun4.l.google.com:19302' },
-                        { urls: 'stun:stun.services.mozilla.com' },
-                    ]
-                }
+                debug: 2
             });
 
             const timeout = setTimeout(() => {
@@ -152,26 +122,31 @@ export class NetworkSystem {
                 this.isHost = false;
                 console.log('[NETWORK] My Peer ID (Guest):', myId);
 
-                const conn = this.peer!.connect(id, { reliable: true });
+                // Small delay to ensure signaling server knows we're open
+                setTimeout(() => {
+                    if (!this.peer) return;
+                    console.log('[NETWORK] Connecting to host:', id);
+                    const conn = this.peer.connect(id);
 
-                // Set a timeout for the actual connection to the host
-                const connTimeout = setTimeout(() => {
-                    console.error('[NETWORK] Connection to host timed out');
-                    resolve(false);
-                }, 8000);
+                    // Set a timeout for the actual connection to the host
+                    const connTimeout = setTimeout(() => {
+                        console.error('[NETWORK] Connection to host timed out');
+                        resolve(false);
+                    }, 8000);
 
-                conn.on('open', () => {
-                    clearTimeout(connTimeout);
-                    console.log('[NETWORK] Connected to host successfully');
-                    this.handleConnection(conn);
-                    resolve(true);
-                });
+                    conn.on('open', () => {
+                        clearTimeout(connTimeout);
+                        console.log('[NETWORK] Connected to host successfully');
+                        this.handleConnection(conn);
+                        resolve(true);
+                    });
 
-                conn.on('error', (err) => {
-                    clearTimeout(connTimeout);
-                    console.error('[NETWORK] Connection to host error:', err);
-                    resolve(false);
-                });
+                    conn.on('error', (err) => {
+                        clearTimeout(connTimeout);
+                        console.error('[NETWORK] Connection to host error:', err);
+                        resolve(false);
+                    });
+                }, 500);
             });
 
             this.peer.on('error', (err) => {
@@ -186,10 +161,15 @@ export class NetworkSystem {
         console.log('[NETWORK] handleConnection called for peer:', conn.peer);
 
         const registerConnection = () => {
-            console.log('[NETWORK] Registering open connection for peer:', conn.peer);
+            console.log('[NETWORK] Registering connection for peer:', conn.peer);
+            if (!conn.peer) {
+                console.error('[NETWORK] Cannot register: peer ID is missing');
+                return;
+            }
+
             if (!this.connections.find(c => c.peer === conn.peer)) {
                 this.connections.push(conn);
-                console.log('[NETWORK] Connection registered. Total:', this.connections.length);
+                console.log('[NETWORK] Total connections now:', this.connections.length);
                 if (this.isHost) {
                     this.playerRoles.forEach((role, id) => {
                         conn.send({ type: 'ROLE_PICKED', payload: { id, role } });
