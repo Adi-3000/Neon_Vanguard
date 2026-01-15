@@ -118,8 +118,8 @@ export class Game {
 
         window.addEventListener('networkFireBullet', (e: any) => {
             // Spawn visual projectile
-            const { x, y, tx, ty, damageMult, role, penetration } = e.detail;
-            const bullet = new Projectile(x, y, tx, ty, false, role || 'GUNNER', penetration || 0);
+            const { x, y, tx, ty, damageMult, role, penetration, ownerId } = e.detail;
+            const bullet = new Projectile(x, y, tx, ty, false, role || 'GUNNER', penetration || 0, ownerId || '');
             bullet.damage *= (damageMult || 1);
             this.projectiles.push(bullet);
         });
@@ -209,10 +209,10 @@ export class Game {
                 this.triggerShake(0.8, 25);
                 this.enemies.forEach((enemy: any) => {
                     const dist = Math.hypot(enemy.x - sourceX, enemy.y - sourceY);
-                    if (dist < 500) {
+                    if (dist < 2000) { // Increased to cover screen
                         if (!this.isMultiplayer || this.networkSystem.isHost) {
-                            enemy.hp -= 150;
-                            if (enemy.hp <= 0) this.handleEnemyDeath(enemy);
+                            enemy.hp -= 300; // Increased to 300
+                            if (enemy.hp <= 0) this.handleEnemyDeath(enemy, peerId);
                         }
                         this.particleSystem.spawnExplosion(enemy.x, enemy.y, '#ff4400', 30);
                     }
@@ -455,13 +455,19 @@ export class Game {
 
         } else {
             this.timeScale = 1.0;
+
+            // Rage Mode Stats
+            const isRage = this.player.role === 'GIANT' && this.player.isAbilityActive;
+            const currentFireRate = isRage ? this.fireRate / 2 : this.fireRate;
+            const effectiveDamageMult = isRage ? this.player.damageMult * 2 : this.player.damageMult;
+
             // Standard Shooting (WHILE LOOP for consistency in frequency)
             const isEngaged = (this.input.mouse.isDown || this.input.joystick.active || this.input.aimJoystick.active) && !this.player.isDead;
             const shouldFire = this.input.isMobile ? isEngaged : (this.input.mouse.isDown && !this.player.isDead);
 
             let shotsFiredThisFrame = 0;
-            while (shouldFire && this.fireTimer >= this.fireRate && shotsFiredThisFrame < 3) {
-                this.fireTimer -= this.fireRate;
+            while (shouldFire && this.fireTimer >= currentFireRate && shotsFiredThisFrame < 3) {
+                this.fireTimer -= currentFireRate;
                 shotsFiredThisFrame++;
 
                 let tx = this.input.mouse.x;
@@ -482,15 +488,15 @@ export class Game {
                 }
 
                 if (this.player.powerUps.doubleFire.active) {
-                    const b1 = new Projectile(this.player.x - 10, this.player.y, tx, ty, false, this.player.role, this.player.penetration);
-                    const b2 = new Projectile(this.player.x + 10, this.player.y, tx, ty, false, this.player.role, this.player.penetration);
-                    b1.damage *= this.player.damageMult;
-                    b2.damage *= this.player.damageMult;
+                    const b1 = new Projectile(this.player.x - 10, this.player.y, tx, ty, false, this.player.role, this.player.penetration, this.networkSystem.myId);
+                    const b2 = new Projectile(this.player.x + 10, this.player.y, tx, ty, false, this.player.role, this.player.penetration, this.networkSystem.myId);
+                    b1.damage *= effectiveDamageMult;
+                    b2.damage *= effectiveDamageMult;
                     this.projectiles.push(b1, b2);
 
                     if (this.isMultiplayer) {
-                        const payload1 = { x: this.player.x - 10, y: this.player.y, tx, ty, damageMult: this.player.damageMult, role: this.player.role, penetration: this.player.penetration };
-                        const payload2 = { x: this.player.x + 10, y: this.player.y, tx, ty, damageMult: this.player.damageMult, role: this.player.role, penetration: this.player.penetration };
+                        const payload1 = { x: this.player.x - 10, y: this.player.y, tx, ty, damageMult: effectiveDamageMult, role: this.player.role, penetration: this.player.penetration, ownerId: this.networkSystem.myId };
+                        const payload2 = { x: this.player.x + 10, y: this.player.y, tx, ty, damageMult: effectiveDamageMult, role: this.player.role, penetration: this.player.penetration, ownerId: this.networkSystem.myId };
 
                         if (this.networkSystem.isHost) {
                             this.networkSystem.broadcast('FIRE_BULLET', payload1);
@@ -502,12 +508,12 @@ export class Game {
                     }
 
                 } else {
-                    const bullet = new Projectile(this.player.x, this.player.y, tx, ty, false, this.player.role, this.player.penetration);
-                    bullet.damage *= this.player.damageMult;
+                    const bullet = new Projectile(this.player.x, this.player.y, tx, ty, false, this.player.role, this.player.penetration, this.networkSystem.myId);
+                    bullet.damage *= effectiveDamageMult;
                     this.projectiles.push(bullet);
 
                     if (this.isMultiplayer) {
-                        const payload = { x: this.player.x, y: this.player.y, tx, ty, damageMult: this.player.damageMult, role: this.player.role, penetration: this.player.penetration };
+                        const payload = { x: this.player.x, y: this.player.y, tx, ty, damageMult: effectiveDamageMult, role: this.player.role, penetration: this.player.penetration, ownerId: this.networkSystem.myId };
                         if (this.networkSystem.isHost) {
                             this.networkSystem.broadcast('FIRE_BULLET', payload);
                         } else {
@@ -777,12 +783,12 @@ export class Game {
 
         switch (this.player.role) {
             case 'GUNNER':
-                this.player.activeTimer = 4.0; // Increased to 4s to targets
+                this.player.activeTimer = 3.0; // Reverted to 3s to targets
                 this.player.markedTargets = [];
                 // Slow mo handled in update
                 break;
             case 'GIANT':
-                this.player.activeTimer = 5.0; // 5s Invulnerability
+                this.player.activeTimer = 6.0; // 6s Invulnerability
                 this.player.isInvincible = true;
                 // Splash Damage around Giant + Heavy Knockback
                 this.triggerSplashDamage(this.player.x, this.player.y, 250, 150, 120);
@@ -829,9 +835,31 @@ export class Game {
             this.shopSystem.openArsenal(); // Extra Upgrade
         } else {
             this.shopSystem.shards += 2; // Increased from 1
-            // Lifesteal chance
+
+            // Lifesteal chance (via upgrades)
             if ((this.player as any).lifesteal) {
                 this.player.hp = Math.min(this.player.hp + (this.player as any).lifesteal, this.player.maxHp);
+            }
+
+            // Healer Passive: Life Drain
+            if (killerId) {
+                if (killerId === this.networkSystem.myId) {
+                    // Local / Host kill
+                    if (this.player.role === 'HEALER') {
+                        this.player.hp = Math.min(this.player.hp + 3, this.player.maxHp);
+                        if (this.player.hp < this.player.maxHp) {
+                            this.particleSystem.spawnDamageNumber(this.player.x, this.player.y, 3, '#00ffaa');
+                        }
+                    }
+                } else if (this.isMultiplayer && this.networkSystem.isHost) {
+                    // Remote Client kill (Running on Host)
+                    const remote = this.remotePlayers.get(killerId);
+                    if (remote && remote.role === 'HEALER') {
+                        remote.hp = Math.min(remote.hp + 3, remote.maxHp);
+                        // No visual here since remote will sync it? Or we can show it locally
+                        this.particleSystem.spawnDamageNumber(remote.x, remote.y, 3, '#00ffaa');
+                    }
+                }
             }
         }
     }
@@ -872,7 +900,9 @@ export class Game {
                             const finalDmg = p.damage * p.currentPenetration;
                             e.hp -= finalDmg;
                             if (e.hp <= 0) {
-                                this.handleEnemyDeath(e);
+                                if (e.hp <= 0) {
+                                    this.handleEnemyDeath(e, p.ownerId);
+                                }
                             }
                         }
 
@@ -896,19 +926,24 @@ export class Game {
                             const ndx = p.vx / vDist;
                             const ndy = p.vy / vDist;
 
-                            // Only apply physics if allowed (Host or Singleplayer)
-                            if (!this.isMultiplayer || this.networkSystem.isHost) {
+                            // Only apply physics if allowed (Host or Singleplayer) AND Not a Boss/Tank
+                            if ((!this.isMultiplayer || this.networkSystem.isHost) && e.type !== 'BOSS' && e.type !== 'TANK') {
                                 e.x += ndx * 60;
                                 e.y += ndy * 60;
                             }
 
-                            // Giant bullets splash to NEARBY enemies with high force
-                            this.triggerSplashDamage(p.x, p.y, 100, p.damage * 0.6, 80, e);
-                            p.markedForDeletion = true;
-                            break;
+                            // Giant bullets splash to NEARBY enemies (Damage only, no knockback for splash)
+                            this.triggerSplashDamage(p.x, p.y, 100, p.damage * 0.6, 0, e);
+
+                            // If no penetration, stop here. If we have penetration, fall through to the penetration check.
+                            if (!(p.ownerPenetration > 0 && p.hitEnemies.size < 2)) {
+                                p.markedForDeletion = true;
+                                break;
+                            }
                         }
 
                         if (p.ownerPenetration > 0 && p.hitEnemies.size < 2) {
+                            // Railgun Tech: Bullet continues through a second enemy
                             p.currentPenetration = p.ownerPenetration;
                         } else {
                             p.markedForDeletion = true;
@@ -944,10 +979,28 @@ export class Game {
             checkPlayer(this.player, true);
             this.remotePlayers.forEach(rp => checkPlayer(rp, false));
 
-            // Station Destruction (local check is enough for visibility)
+            // Station Destruction
             if (s.timer <= 0 || s.hp <= 0) {
+                // If destroyed by damage (and timer still valid), explode!
+                if (s.hp <= 0 && s.timer > 0) {
+                    this.triggerShake(0.5, 10);
+                    this.particleSystem.spawnExplosion(s.x, s.y, '#ff0000', 50);
+                    // Damage enemies in radius
+                    this.enemies.forEach(e => {
+                        const dist = Math.hypot(e.x - s.x, e.y - s.y);
+                        if (dist <= 250) { // Range slightly larger than station radius (150)
+                            if (!this.isMultiplayer || this.networkSystem.isHost) {
+                                e.hp -= 1000;
+                                if (e.hp <= 0) this.handleEnemyDeath(e);
+                            }
+                            this.particleSystem.spawnDamageNumber(e.x, e.y, 1000, '#ff0000');
+                        }
+                    });
+                } else {
+                    // Just timer ran out
+                    this.particleSystem.spawnExplosion(s.x, s.y, '#00ffaa', 30);
+                }
                 s.active = false;
-                this.particleSystem.spawnExplosion(s.x, s.y, '#00ffaa', 30);
             }
         });
 
@@ -1017,8 +1070,8 @@ export class Game {
                     e.hp -= damage;
                 }
 
-                // Knockback
-                if (knockbackForce > 0 && dist > 0) {
+                // Knockback (Bosses and Tanks are immune)
+                if (knockbackForce > 0 && dist > 0 && e.type !== 'BOSS' && e.type !== 'TANK') {
                     const ratio = knockbackForce * (1 - dist / (radius + e.radius));
                     if (!this.isMultiplayer || this.networkSystem.isHost) {
                         e.x += (dx / dist) * ratio;
@@ -1315,8 +1368,72 @@ export class Game {
         const abilityText = abilityReady ? 'ABILITY READY [SPACE]' : `COOLDOWN: ${this.player.abilityTimer.toFixed(1)}s`;
         this.ctx.fillText(abilityText, this.canvas.width - 20, this.canvas.height - 20);
 
+        // Active Ability Timer Bar
+        if (this.player.isAbilityActive && this.player.activeTimer > 0) {
+            const barW = 200;
+            const barH = 8;
+            const bx = this.canvas.width / 2 - barW / 2;
+            const by = this.canvas.height - 120;
+            const maxDuration = this.player.role === 'GIANT' ? 5.0 : 3.0;
+            const pct = Math.max(0, this.player.activeTimer / maxDuration);
+
+            this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            this.ctx.fillRect(bx, by, barW, barH);
+            this.ctx.fillStyle = this.player.role === 'GUNNER' ? '#0ff' : '#f40';
+            this.ctx.fillRect(bx, by, barW * pct, barH);
+            this.ctx.strokeStyle = 'white';
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeRect(bx, by, barW, barH);
+
+            this.ctx.textAlign = 'center';
+            this.ctx.font = 'bold 14px monospace';
+            this.ctx.fillStyle = '#fff';
+            this.ctx.fillText(this.player.role === 'GUNNER' ? 'TARGETING...' : 'RAGE ACTIVE', this.canvas.width / 2, by - 8);
+        }
+
+        this.drawBossHealthBar();
         this.drawPowerUpStatus();
         this.ctx.restore();
+    }
+
+    drawBossHealthBar() {
+        const boss = this.enemies.find(e => e.type === 'BOSS');
+        if (!boss) return;
+
+        const margin = 50;
+        const barWidth = this.canvas.width - margin * 2;
+        const barHeight = 20;
+        const x = margin;
+        const y = 20;
+
+        // Container
+        this.ctx.beginPath();
+        this.ctx.roundRect(x, y, barWidth, barHeight, 5);
+        this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        this.ctx.fill();
+        this.ctx.strokeStyle = '#f00';
+        this.ctx.lineWidth = 1;
+        this.ctx.stroke();
+
+        // Fill
+        const pct = Math.max(0, boss.hp / boss.maxHp);
+        this.ctx.beginPath();
+        this.ctx.roundRect(x + 2, y + 2, (barWidth - 4) * pct, barHeight - 4, 3);
+        const gradient = this.ctx.createLinearGradient(x, y, x + barWidth, y);
+        gradient.addColorStop(0, '#800');
+        gradient.addColorStop(0.5, '#f00');
+        gradient.addColorStop(1, '#ff4400');
+        this.ctx.fillStyle = gradient;
+        this.ctx.fill();
+
+        // Label
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = 'bold 16px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText("COMMANDER ELITE", this.canvas.width / 2, y + 15);
+        this.ctx.font = '12px monospace';
+        this.ctx.fillStyle = '#ffaaaa';
+        this.ctx.fillText(`${Math.ceil(pct * 100)}%`, this.canvas.width / 2, y + 36);
     }
 
     drawPowerUpStatus() {

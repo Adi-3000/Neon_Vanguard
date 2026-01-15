@@ -14,12 +14,14 @@ export class Enemy extends Entity {
     fireRate: number = 2.0;
     id: number;
     static nextId: number = 0;
+    wave: number = 1;
 
-    constructor(x: number, y: number, target: Entity | null, type: EnemyType = 'RUNNER', id?: number) {
+    constructor(x: number, y: number, target: Entity | null, type: EnemyType = 'RUNNER', id?: number, wave: number = 1) {
         super(x, y, 15, '#ff0055');
         this.target = target;
         this.type = type;
         this.id = id !== undefined ? id : Enemy.nextId++;
+        this.wave = wave;
 
         // Stats based on type
         switch (type) {
@@ -116,6 +118,16 @@ export class Enemy extends Entity {
                 this.x += (dx / dist) * this.speed * dt;
                 this.y += (dy / dist) * this.speed * dt;
             }
+
+            // BOSS Shooting Logic
+            if (this.type === 'BOSS' && this.wave >= 12) {
+                this.shootTimer += dt;
+                // Faster fire rate for Boss
+                if (this.shootTimer >= 1.0 && addProjectile) {
+                    this.shootTimer = 0;
+                    addProjectile(this.x, this.y, finalTarget.x, finalTarget.y, true);
+                }
+            }
         }
     }
 
@@ -143,9 +155,15 @@ export class Enemy extends Entity {
                 this.drawPolygon(ctx, 8);
                 // Inner Eye
                 ctx.fillStyle = '#000';
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, 20, 0, Math.PI * 2);
-                ctx.fill();
+                if (this.wave >= 12) {
+                    // Shooting Boss (Square Eye)
+                    ctx.fillRect(this.x - 20, this.y - 20, 40, 40);
+                } else {
+                    // Melee Boss (Circular Eye)
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 20, 0, Math.PI * 2);
+                    ctx.fill();
+                }
                 break;
         }
         ctx.shadowBlur = 0;

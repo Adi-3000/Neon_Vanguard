@@ -65,7 +65,7 @@ export class Player extends Entity {
                 this.color = '#00ffff';
                 this.speed = 400;
                 this.fireRateMult = 1.3;
-                this.abilityCooldown = 7;
+                this.abilityCooldown = 15;
                 this.maxTargets = 3;
                 break;
 
@@ -75,16 +75,16 @@ export class Player extends Entity {
                 this.damageMult = 0.6; // Slightly higher base damage
                 this.baseMaxHp = 400;
                 this.hp = 400;
-                this.abilityCooldown = 15;
+                this.abilityCooldown = 25;
                 this.radius = 15; // Reset to same as Gunner
                 break;
             case 'HEALER':
                 this.color = '#00ffaa'; // Mint Green
                 this.speed = 320;
-                this.damageMult = 0.45;
-                this.baseMaxHp = 120;
-                this.hp = 120;
-                this.abilityCooldown = 20;
+                this.damageMult = 0.6; // Buffed from 0.45
+                this.baseMaxHp = 150;
+                this.hp = 150;
+                this.abilityCooldown = 25;
                 break;
         }
         this.maxHp = this.baseMaxHp;
@@ -174,9 +174,14 @@ export class Player extends Entity {
 
         // Apply movement
         if (mx !== 0 || my !== 0) {
+            let currentSpeed = this.speed;
+            if (this.role === 'GIANT' && this.isAbilityActive) {
+                currentSpeed *= 2; // Rage Mode: Double Speed
+            }
+
             const length = Math.hypot(mx, my);
-            const moveX = (mx / length) * this.speed * dt;
-            const moveY = (my / length) * this.speed * dt;
+            const moveX = (mx / length) * currentSpeed * dt;
+            const moveY = (my / length) * currentSpeed * dt;
 
             this.x += moveX;
             this.y += moveY;

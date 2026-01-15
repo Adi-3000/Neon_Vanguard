@@ -93,7 +93,7 @@ export class ShopSystem {
                 }
                 g.enemies.forEach((e: any) => {
                     const dist = Math.hypot(e.x - g.player.x, e.y - g.player.y);
-                    if (dist < 500) {
+                    if (dist < 2000) { // Global range
                         if (!g.isMultiplayer || g.networkSystem.isHost) {
                             e.hp -= 150;
                             if (e.hp <= 0) g.handleEnemyDeath(e);

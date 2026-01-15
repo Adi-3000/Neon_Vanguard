@@ -7,16 +7,28 @@ export class Projectile extends Entity {
     damage: number = 40;
     isEnemy: boolean = false;
     ownerRole: string = 'GUNNER';
+    ownerId: string = '';
     ownerPenetration: number = 0;
 
     // Penetration logic
     hitEnemies: Set<any> = new Set();
     currentPenetration: number = 1.0;
 
-    constructor(x: number, y: number, targetX: number, targetY: number, isEnemy: boolean = false, ownerRole: string = 'GUNNER', ownerPen: number = 0) {
-        super(x, y, 4, isEnemy ? '#ff0000' : '#ffff00');
+    constructor(x: number, y: number, targetX: number, targetY: number, isEnemy: boolean = false, ownerRole: string = 'GUNNER', ownerPen: number = 0, ownerId: string = '') {
+        let color = '#ffff00';
+        if (isEnemy) {
+            color = '#ff0000';
+        } else {
+            switch (ownerRole) {
+                case 'GUNNER': color = '#00ffff'; break;
+                case 'GIANT': color = '#ff4400'; break;
+                case 'HEALER': color = '#00ffaa'; break;
+            }
+        }
+        super(x, y, 4, color);
         this.isEnemy = isEnemy;
         this.ownerRole = ownerRole;
+        this.ownerId = ownerId;
         this.ownerPenetration = ownerPen;
         this.currentPenetration = 1.0;
 

@@ -24,17 +24,21 @@ export class WaveManager {
         // Multiplier for multiplayer: 1.0 + (players - 1) * 0.5
         // 2 players = 1.5x difficulty, 3 players = 2.0x difficulty
         const mpFactor = 1.0 + (this.playerCount - 1) * 0.5;
-        this.hpMult = hpMult * mpFactor;
 
-        // Faster speed scaling: 1.0 + (wave * 0.05)
+        // Wave Scaling: HP increases by 20% every 3 waves
+        const waveFactor = 1.0 + (Math.floor(this.wave / 3) * 0.2);
+
+        this.hpMult = hpMult * mpFactor * waveFactor;
+
+        // Faster speed scaling: 1.0 + (wave * 0.05) - Increases every wave
         this.speedMult = 1.0 + (this.wave * 0.05);
 
         // Spawn Interval Logic:
         // Start: 1.2s
-        // Decrease by 0.1s per wave
+        // Decrease by 0.1s every 2 waves
         // Min: 0.1s (Extreme speed)
         // Multiplayer decreases interval: base / mpFactor
-        const baseInterval = 1.2 - (this.wave * 0.1);
+        const baseInterval = 1.2 - (Math.floor(this.wave / 2) * 0.1);
         this.spawnInterval = Math.max(0.1, baseInterval / mpFactor);
     }
 
@@ -53,7 +57,7 @@ export class WaveManager {
             if (!bossExists) {
                 const x = this.screenWidth / 2;
                 const y = -100; // Drop from top
-                const boss = new Enemy(x, y, this.player, 'BOSS');
+                const boss = new Enemy(x, y, this.player, 'BOSS', undefined, this.wave);
                 boss.hp *= (1 + (this.wave * 0.2));
                 boss.maxHp = boss.hp;
                 enemiesList.push(boss);
@@ -99,7 +103,7 @@ export class WaveManager {
             type = 'BASIC';
         }
 
-        const enemy = new Enemy(x, y, this.player, type);
+        const enemy = new Enemy(x, y, this.player, type, undefined, this.wave);
         enemy.hp *= this.hpMult;
         enemy.maxHp = enemy.hp; // Sync maxHp with scaled starting health
         enemy.speed *= this.speedMult;

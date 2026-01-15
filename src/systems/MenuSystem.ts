@@ -97,10 +97,26 @@ export class MenuSystem {
                       onmouseout="this.style.background='transparent'; this.style.transform='scale(1)'">
                         MULTIPLAYER
                     </button>
+
+                    <button id="btn-whats-new" style="
+                        background: transparent;
+                        border: 1px solid #aaa;
+                        color: #aaa;
+                        padding: 0.5rem 2rem;
+                        font-size: 1rem;
+                        font-family: monospace;
+                        cursor: pointer;
+                        transition: 0.3s;
+                        width: 250px;
+                        margin-top: 10px;
+                    " onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+                      onmouseout="this.style.background='transparent'">
+                        WHAT'S NEW
+                    </button>
                 </div>
 
                 <div style="margin-top: 3rem; color: #555; font-size: 0.8rem;">
-                    v1.2 Mobile Refined
+                    v2.5 Refined
                 </div>
             </div>
         `;
@@ -108,6 +124,64 @@ export class MenuSystem {
         document.getElementById('btn-start')!.onclick = () => this.showCharacterSelect();
         document.getElementById('btn-scores')!.onclick = () => this.showHighScores();
         document.getElementById('btn-multiplayer')!.onclick = () => this.showMultiplayerMenu();
+        document.getElementById('btn-whats-new')!.onclick = () => this.showPatchNotes();
+    }
+
+    showPatchNotes() {
+        this.uiContainer.innerHTML = `
+            <div style="
+                position: absolute; 
+                top: 50%; left: 50%; 
+                transform: translate(-50%, -50%);
+                color: #fff;
+                font-family: monospace;
+                pointer-events: auto;
+                width: 90%;
+                max-width: 600px;
+                background: rgba(0,0,10,0.95);
+                padding: 2rem;
+                border: 2px solid #aaa;
+                max-height: 80vh;
+                overflow-y: auto;
+            ">
+                <h2 style="color: #fff; text-align: center; margin-bottom: 1.5rem; text-decoration: underline;">PATCH NOTES v2.5</h2>
+                
+                <div style="text-align: left; line-height: 1.6; font-size: 0.9rem;">
+                    <h3 style="color: #0ff;">OPTIMIZATION</h3>
+                    <ul style="margin-bottom: 1rem;">
+                        <li>Game loop & Networking optimized for 3-Player Co-op.</li>
+                    </ul>
+
+                    <h3 style="color: #ff4400;">GAMEPLAY BALANCING</h3>
+                    <ul style="margin-bottom: 1rem;">
+                        <li><strong>GIANT:</strong> Rage Mode (splash damage to nearby enemy,Invincibility, 2x Speed, 2x Fire Rate, and 2x Damage.) cooldown 20s -> 25s.</li>
+                        <li><strong>HEALER:</strong> Base HP 120 -> 150. Added 'Life Drain' passive (+3 HP/kill). Healing Station explodes for 1000 DMG if destroyed by enemies. Cooldown 20s -> 25s.</li>
+                        <li><strong>GUNNER:</strong> 'Dead Eye' cooldown 10s -> 15s.</li>
+                    </ul>
+
+                    <h3 style="color: #f0f;">BUG FIXES & UX</h3>
+                    <ul style="margin-bottom: 1rem;">
+                        <li><strong>Dead-eye:</strong> Fixed the bug where player has to press space twice.</li>
+                        <li><strong>Visuals:</strong> Projectiles now match player colors (Cyan/Orange/Green).</li>
+                        <li><strong>Railgun:</strong> Fixed penetration to max 2 targets.</li>
+                        <li><strong>Bosses:</strong> Fixed Knockback immunity logic.</li>
+                        <li><strong>Menu:</strong> Added 3D Flip Cards for Character Selection (Hover 'Stats >').</li>
+                    </ul>
+                </div>
+
+                <div style="text-align: center; margin-top: 2rem;">
+                    <button id="btn-patch-back" style="
+                        background: #fff;
+                        color: #000;
+                        border: none;
+                        padding: 0.5rem 2rem;
+                        font-weight: bold;
+                        cursor: pointer;
+                    ">BACK</button>
+                </div>
+            </div>
+        `;
+        document.getElementById('btn-patch-back')!.onclick = () => this.showMainMenu();
     }
 
     showMultiplayerMenu() {
@@ -284,6 +358,10 @@ export class MenuSystem {
                 <div style="margin-top: 2rem;">
                     ${isHost ? '<button id="btn-start-multi" disabled style="background: #0ff; color: #000; border: none; padding: 1rem 3rem; font-weight: bold; cursor: not-allowed; opacity: 0.4;">WAITING FOR ALL PLAYERS...</button>' : '<p style="color: #0ff;">Waiting for host to start...</p>'}
                 </div>
+
+                <div style="margin-top: 1rem;">
+                    <button id="btn-exit-lobby" style="background: transparent; border: 1px solid #f44; color: #f44; padding: 0.5rem 2rem; cursor: pointer;">EXIT LOBBY</button>
+                </div>
             </div>
         `;
 
@@ -297,6 +375,8 @@ export class MenuSystem {
                 });
             };
         }
+
+        document.getElementById('btn-exit-lobby')!.onclick = () => this.game.menuSystem.showMainMenu();
 
         if (isHost) {
             document.getElementById('btn-start-multi')!.onclick = () => {
@@ -470,24 +550,94 @@ export class MenuSystem {
         const isLocked = pickedById !== null && pickedById !== this.game.networkSystem.myId;
         const isSelected = this.game.networkSystem.myRole === role;
 
+        // Stats Definition
+        let statsHTML = "";
+        if (role === 'GUNNER') {
+            statsHTML = `
+                <div style="text-align:left; width:100%; font-size: 0.8rem; line-height: 1.4;">
+                    <p><strong style="color:#fff;">HP:</strong> 100</p>
+                    <p><strong style="color:#fff;">Speed:</strong> Very Fast (400)</p>
+                    <p><strong style="color:#fff;">Ability:</strong> Dead Eye (15s)</p>
+                    <p style="color:#aaa; font-size:0.7rem;">Slows time to 10%. Mark up to 3 targets. Manual trigger instantly kills them.</p>
+                </div>
+            `;
+        }
+        if (role === 'GIANT') {
+            statsHTML = `
+                <div style="text-align:left; width:100%; font-size: 0.8rem; line-height: 1.4;">
+                    <p><strong style="color:#fff;">HP:</strong> 400</p>
+                    <p><strong style="color:#fff;">Speed:</strong> Slow (220)</p>
+                    <p><strong style="color:#fff;">Ability:</strong> Rage Mode (25s)</p>
+                    <p style="color:#aaa; font-size:0.7rem;">Become Invincible for 5s. Gain 2x Speed, 2x Fire Rate, and 2x Damage.</p>
+                </div>
+            `;
+        }
+        if (role === 'HEALER') {
+            statsHTML = `
+                <div style="text-align:left; width:100%; font-size: 0.8rem; line-height: 1.4;">
+                    <p><strong style="color:#fff;">HP:</strong> 120</p>
+                    <p><strong style="color:#fff;">Speed:</strong> Fast (320)</p>
+                    <p><strong style="color:#fff;">Ability:</strong> Medic Station (25s)</p>
+                    <p style="color:#aaa; font-size:0.7rem;">Deploys a station with 1000 HP. Heals allies nearby. Explodes if destroyed by enemies.</p>
+                </div>
+            `;
+        }
+
+        const width = isSmall ? '45%' : '180px';
+        const height = isSmall ? '180px' : '250px'; // Fixed height for consistent flip
+
         return `
-            <div id="select-${role}" style="
-                border: 2px solid ${isLocked ? '#444' : (isSelected ? '#fff' : color)};
-                background: ${isSelected ? color + '44' : 'rgba(0,0,0,0.8)'};
-                padding: ${isSmall ? '0.8rem' : '1.5rem'};
-                cursor: ${isLocked ? 'not-allowed' : 'pointer'};
-                transition: transform 0.2s;
-                width: ${isSmall ? '45%' : '180px'};
-                max-width: 280px;
-                opacity: ${isLocked ? '0.4' : '1'};
-                position: relative;
-                box-shadow: ${isSelected ? '0 0 20px ' + color : 'none'};
-            ">
-                ${isLocked ? '<div style="position:absolute; top:5px; right:5px; font-size:10px; color:#fff; background:#f00; padding:2px 5px; font-family:sans-serif; font-weight:bold;">TAKEN</div>' : ''}
-                <h3 style="color:${isLocked ? '#888' : color}; margin: 0; font-size:${isSmall ? '0.9rem' : '1.2rem'}">${role}</h3>
-                <p style="color:#ddd; font-size: 0.7rem; margin: 5px 0;">${type}</p>
-                <hr style="border-color:${isLocked ? '#444' : color}; margin: 0.5rem 0;">
-                <p style="font-size:0.65rem; margin: 0;"><strong>${ability}</strong></p>
+            <div id="select-${role}" class="flip-card" style="width: ${width}; height: ${height}; cursor: ${isLocked ? 'not-allowed' : 'pointer'}; opacity: ${isLocked ? '0.5' : '1'}; perspective: 1000px; margin: 10px;">
+                <div class="flip-card-inner" style="position: relative; width: 100%; height: 100%; text-align: center; transition: transform 0.6s; transform-style: preserve-3d;">
+                    
+                    <!-- Front -->
+                    <div class="flip-card-front" style="
+                        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                        -webkit-backface-visibility: hidden; backface-visibility: hidden;
+                        border: 2px solid ${isLocked ? '#444' : (isSelected ? '#fff' : color)};
+                        background: ${isSelected ? color + '44' : 'rgba(0,0,0,0.9)'};
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 0.5rem;
+                        box-shadow: ${isSelected ? '0 0 20px ' + color : 'none'};
+                        z-index: 2;
+                        box-sizing: border-box; /* IMPORTANT */
+                    ">
+                        
+                        <div style="position: absolute; top: 10px; right: 10px; color: #fff; font-size: 0.7rem; opacity: 1; cursor: help; text-decoration: underline; padding: 5px; z-index: 10;"
+                             onmouseenter="this.closest('.flip-card').querySelector('.flip-card-inner').style.transform='rotateY(180deg)'"
+                             onmouseleave="this.closest('.flip-card').querySelector('.flip-card-inner').style.transform='rotateY(0deg)'"
+                        >Stats &gt;</div>
+
+                        <div style="font-size: ${isSmall ? '2rem' : '3rem'}; color: ${color};">
+                            ${role === 'GUNNER' ? '⚡' : (role === 'GIANT' ? '🛡️' : '❤️')}
+                        </div>
+                        <h3 style="margin: 0; color: ${color}; font-size: ${isSmall ? '0.9rem' : '1.2rem'};">${role}</h3>
+                        <p style="margin: 0; color: #fff; font-size: ${isSmall ? '0.7rem' : '0.9rem'}; opacity: 0.8;">${type}</p>
+                        ${isLocked ? '<div style="color: #f00; font-size: 0.8rem; margin-top: 5px;">TAKEN</div>' : ''}
+                    </div>
+
+                    <!-- Back -->
+                    <div class="flip-card-back" style="
+                        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                        -webkit-backface-visibility: hidden; backface-visibility: hidden;
+                        transform: rotateY(180deg);
+                        border: 2px solid ${color}; 
+                        background: #050505;
+                        color: white;
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: center;
+                        align-items: center;
+                        padding: 1rem;
+                        box-sizing: border-box; /* IMPORTANT */
+                    ">
+                        <h4 style="color:${color}; margin-top:0; margin-bottom: 0.5rem; font-size: 1rem;">${role} STATS</h4>
+                        ${statsHTML}
+                    </div>
+                </div>
             </div>
         `;
     }
