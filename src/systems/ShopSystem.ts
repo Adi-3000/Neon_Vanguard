@@ -161,6 +161,13 @@ export class ShopSystem {
 
     openArsenal() {
         if (this.game.player.isDead) return;
+
+        // Prevent opening if on cooldown (Multiplayer only)
+        if (this.game.isMultiplayer && this.game.player.arsenalCooldown > 0) {
+            alert(`Arsenal on cooldown! Wait ${Math.ceil(this.game.player.arsenalCooldown)}s`);
+            return;
+        }
+
         this.currentMode = 'ARSENAL';
         this.isShopOpen = true;
         let shouldPause = !this.game.isMultiplayer;
@@ -183,38 +190,50 @@ export class ShopSystem {
         if (this.game.player.isDead) return;
         this.currentMode = 'POWERUP';
         this.isShopOpen = true;
-        if (!this.game.isMultiplayer) {
-            // Note: MenuSystem/ShopSystem handles internal pausing for singleplayer
-            this.game.input.reset();
-        } else {
-            // Multiplayer Selection Timer
-            this.timeLeft = 4; // 4 seconds to choose
-            if (this.game.networkSystem.isHost) {
-                // Host manually sets pause because broadcast doesn't reach self
-                this.game.paused = true;
-                this.game.networkSystem.broadcast('POWERUP_PAUSE', { duration: 4 });
-                setTimeout(() => {
-                    if (this.game.isPlaying && !this.game.isGameOver) {
-                        this.game.paused = false;
-                    }
-                }, 4000);
-            }
-            if (this.selectionTimer) clearInterval(this.selectionTimer);
-            this.selectionTimer = setInterval(() => {
-                this.timeLeft--;
-                if (this.timeLeft <= 0) {
-                    this.closeShop();
-                } else {
-                    this.renderPowerUps();
-                }
-            }, 1000);
+
+        // Shared Selection Timer Logic
+        this.timeLeft = 4; // 4 seconds to choose
+        this.game.paused = true;
+        this.game.input.reset();
+
+        if (this.game.isMultiplayer && this.game.networkSystem.isHost) {
+            this.game.networkSystem.broadcast('POWERUP_PAUSE', { duration: 4 });
         }
+
+        // Auto-unpause after 4 seconds
+        setTimeout(() => {
+            if (this.game.isPlaying && !this.game.isGameOver) {
+                // If shop hasn't been closed by a selection yet, close it now
+                if (this.isShopOpen && this.currentMode === 'POWERUP') {
+                    this.closeShop();
+                }
+                this.game.paused = false;
+            }
+        }, 4000);
+
+        if (this.selectionTimer) clearInterval(this.selectionTimer);
+        this.selectionTimer = setInterval(() => {
+            this.timeLeft--;
+            if (this.timeLeft <= 0) {
+                this.closeShop();
+            } else {
+                this.renderPowerUps();
+            }
+        }, 1000);
+
         const shuffled = [...this.powerUps].sort(() => 0.5 - Math.random());
         this.availablePowerUps = shuffled.slice(0, 3);
         this.renderUI();
     }
 
     closeShop() {
+        // Apply multiplayer exit penalties/buffs if we were in the Arsenal
+        if (this.isShopOpen && this.currentMode === 'ARSENAL' && this.game.isMultiplayer) {
+            this.game.player.arsenalCooldown = 15;
+            this.game.player.postArsenalInvincibility = 3;
+            console.log('[SHOP] Arsenal closed: 15s cooldown and 3s invincibility applied');
+        }
+
         this.isShopOpen = false;
         if (this.selectionTimer) clearInterval(this.selectionTimer);
         this.selectionTimer = null;
@@ -342,7 +361,7 @@ export class ShopSystem {
         this.uiContainer.innerHTML = `
             <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(5, 20, 5, 0.98); border: 2px solid #0f0; padding: ${isSmall ? '1rem' : '2rem'}; text-align: center; color: #fff; font-family: monospace; pointer-events: auto; width: 95%; max-width: 600px; max-height: 90vh; overflow-y: auto;">
                 <h1 style="color: #0f0; text-shadow: 0 0 10px #0f0; font-size: ${isSmall ? '1.2rem' : '1.5rem'};">FREE POWER-UP CHOICE</h1>
-                ${this.game.isMultiplayer ? `<p style="color: #f00; font-weight: bold; font-size: 1.2rem;">AUTO-CLOSING IN: ${this.timeLeft}s</p>` : '<p style="font-size: 0.9rem;">Advanced cycle complete. Select one:</p>'}
+                <p style="color: #f00; font-weight: bold; font-size: 1.2rem;">AUTO-CLOSING IN: ${this.timeLeft}s</p>
                 <div style="display: flex; flex-direction: ${isSmall ? 'column' : 'row'}; gap: 0.8rem; margin-top: 1.5rem; justify-content: center; align-items: center;">
                     ${this.availablePowerUps.map((p, i) => `
                         <button id="pu-${i}" style="background: #111; border: 1px solid #0f0; color: #fff; padding: 1rem; width: ${isSmall ? '100%' : '180px'}; cursor: pointer; transition: 0.2s;">

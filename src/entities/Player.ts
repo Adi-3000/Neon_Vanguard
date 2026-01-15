@@ -49,6 +49,10 @@ export class Player extends Entity {
     // Healing Station (Healer only)
     healingStation: { active: boolean, x: number, y: number, radius: number, timer: number, hp: number, maxHp: number } | null = null;
 
+    // Cooldowns and temporary states
+    arsenalCooldown: number = 0;
+    postArsenalInvincibility: number = 0;
+
     constructor(x: number, y: number, role: PlayerRole = 'GUNNER') {
         super(x, y, 15, '#00ffff');
         this.role = role;
@@ -92,6 +96,18 @@ export class Player extends Entity {
         // Cooldown management
         if (this.abilityTimer > 0) {
             this.abilityTimer -= dt;
+        }
+
+        if (this.arsenalCooldown > 0) {
+            this.arsenalCooldown -= dt;
+        }
+
+        if (this.postArsenalInvincibility > 0) {
+            this.postArsenalInvincibility -= dt;
+            this.isInvincible = true;
+            if (this.postArsenalInvincibility <= 0) {
+                this.isInvincible = this.powerUps.shield.active; // Return to shield state
+            }
         }
 
         // Active ability duration

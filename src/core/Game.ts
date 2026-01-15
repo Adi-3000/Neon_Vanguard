@@ -39,6 +39,8 @@ export class Game {
     // Constants
     fireRate: number = 0.15;
     fireTimer: number = 0;
+    netSyncTimer: number = 0;
+    netSyncRate: number = 0.033; // ~30fps sync
 
     // Wave State
     waveCount: number = 1;
@@ -608,27 +610,38 @@ export class Game {
 
         // Multiplayer State Sync
         if (this.isMultiplayer) {
-            // Send our state including firing info
-            this.networkSystem.broadcast('PLAYER_SYNC', {
-                id: this.networkSystem.myId,
-                role: this.player.role,
-                x: this.player.x,
-                y: this.player.y,
-                hp: this.player.hp,
-                maxHp: this.player.maxHp,
-                isDead: this.player.isDead,
-                score: this.score,
-                isFiring: this.input.mouse.isDown,
-                aimX: this.input.mouse.x,
-                aimY: this.input.mouse.y,
-                healingStation: this.player.role === 'HEALER' ? this.player.healingStation : null,
-                powerUps: {
-                    shield: this.player.powerUps.shield.active,
-                    sword: this.player.powerUps.sword.active,
-                    doubleFire: this.player.powerUps.doubleFire.active,
-                    glassCannon: this.player.powerUps.glassCannon.active
+            // Reconcile remote player instances (cleanup ghosts)
+            this.remotePlayers.forEach((_, id) => {
+                if (!this.networkSystem.remotePlayers.has(id)) {
+                    this.remotePlayers.delete(id);
                 }
             });
+
+            // Throttled State Send
+            this.netSyncTimer += dt;
+            if (this.netSyncTimer >= this.netSyncRate) {
+                this.netSyncTimer = 0;
+                this.networkSystem.broadcast('PLAYER_SYNC', {
+                    id: this.networkSystem.myId,
+                    role: this.player.role,
+                    x: this.player.x,
+                    y: this.player.y,
+                    hp: this.player.hp,
+                    maxHp: this.player.maxHp,
+                    isDead: this.player.isDead,
+                    score: this.score,
+                    isFiring: this.input.mouse.isDown,
+                    aimX: this.input.mouse.x,
+                    aimY: this.input.mouse.y,
+                    healingStation: this.player.role === 'HEALER' ? this.player.healingStation : null,
+                    powerUps: {
+                        shield: this.player.powerUps.shield.active,
+                        sword: this.player.powerUps.sword.active,
+                        doubleFire: this.player.powerUps.doubleFire.active,
+                        glassCannon: this.player.powerUps.glassCannon.active
+                    }
+                });
+            }
 
             // Update remote players
             this.networkSystem.remotePlayers.forEach((state, id) => {
@@ -942,17 +955,19 @@ export class Game {
     }
 
     checkAllPlayersDead() {
-        if (!this.player.isDead || this.isGameOver) return; // Only process if we are dead and game is NOT yet over
+        if (this.isGameOver) return;
 
-        let allDead = true;
+        // Current participant list should match network state
+        let anyoneAlive = !this.player.isDead;
+
         this.remotePlayers.forEach(rp => {
-            if (!rp.isDead) allDead = false;
+            if (!rp.isDead) anyoneAlive = true;
         });
 
-        if (allDead) {
-            console.log('[GAME] All players dead. Broadasting Game Over.');
+        if (!anyoneAlive) {
+            console.log('[GAME] All participants dead. Broadasting Game Over.');
             this.gameOver();
-            if (this.isMultiplayer) {
+            if (this.isMultiplayer && this.networkSystem.isHost) {
                 this.networkSystem.broadcast('MISSION_FAILED', {});
             }
         }
@@ -1029,9 +1044,9 @@ export class Game {
             this.ctx.translate(dx, dy);
         }
 
-        // Background
+        // Background (Draw larger to cover shake offsets)
         this.ctx.fillStyle = '#050505';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.fillRect(-100, -100, this.canvas.width + 200, this.canvas.height + 200);
 
         this.drawGrid();
 
@@ -1311,18 +1326,21 @@ export class Game {
         this.ctx.strokeStyle = '#1a1a1a';
         this.ctx.lineWidth = 1;
         const gridSize = 50;
-        for (let x = 0; x < this.canvas.width; x += gridSize) {
+        // Draw up to world bounds or screen bounds, whichever is larger
+        const maxX = Math.max(this.canvas.width + 100, 2000);
+        const maxY = Math.max(this.canvas.height + 100, 2000);
+
+        for (let x = -100; x < maxX; x += gridSize) {
             this.ctx.beginPath();
-            this.ctx.moveTo(x, 0);
-            this.ctx.lineTo(x, this.canvas.height);
+            this.ctx.moveTo(x, -100);
+            this.ctx.lineTo(x, maxY);
             this.ctx.stroke();
         }
-        for (let y = 0; y < this.canvas.height; y += gridSize) {
+        for (let y = -100; y < maxY; y += gridSize) {
             this.ctx.beginPath();
-            this.ctx.moveTo(0, y);
-            this.ctx.lineTo(this.canvas.width, y);
+            this.ctx.moveTo(-100, y);
+            this.ctx.lineTo(maxX, y);
             this.ctx.stroke();
         }
     }
 }
-
