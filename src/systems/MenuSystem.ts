@@ -156,7 +156,7 @@ export class MenuSystem {
                     <ul style="margin-bottom: 1rem;">
                         <li><strong>GIANT:</strong> Rage Mode (splash damage to nearby enemy,Invincibility, 2x Speed, 2x Fire Rate, and 2x Damage.) cooldown 20s -> 25s.</li>
                         <li><strong>HEALER:</strong> Base HP 120 -> 150. Added 'Life Drain' passive (+3 HP/kill). Healing Station explodes for 1000 DMG if destroyed by enemies. Cooldown 20s -> 25s.</li>
-                        <li><strong>GUNNER:</strong> 'Dead Eye' cooldown 10s -> 15s.</li>
+                        <li><strong>GUNNER:</strong> 'Dead Eye' cooldown 7s -> 15s.</li>
                     </ul>
 
                     <h3 style="color: #f0f;">BUG FIXES & UX</h3>
