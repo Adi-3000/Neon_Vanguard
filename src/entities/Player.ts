@@ -114,7 +114,9 @@ export class Player extends Entity {
         if (this.isAbilityActive) {
             this.activeTimer -= dt;
             if (this.activeTimer <= 0) {
-                this.deactivateAbility();
+                if (this.role !== 'GUNNER') {
+                    this.deactivateAbility();
+                }
             }
         }
 

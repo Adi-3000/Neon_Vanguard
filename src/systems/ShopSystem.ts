@@ -87,12 +87,18 @@ export class ShopSystem {
             type: 'INSTANT',
             onApply: (g) => {
                 g.triggerShake(0.8, 25);
+                if (g.isMultiplayer) {
+                    if (g.networkSystem.isHost) g.networkSystem.broadcast('POWERUP_APPLIED', { id: 'meteor' });
+                    else g.networkSystem.sendToHost('POWERUP_APPLIED', { id: 'meteor' });
+                }
                 g.enemies.forEach((e: any) => {
                     const dist = Math.hypot(e.x - g.player.x, e.y - g.player.y);
                     if (dist < 500) {
-                        e.hp -= 150;
+                        if (!g.isMultiplayer || g.networkSystem.isHost) {
+                            e.hp -= 150;
+                            if (e.hp <= 0) g.handleEnemyDeath(e);
+                        }
                         g.particleSystem.spawnExplosion(e.x, e.y, '#ff4400', 30);
-                        if (e.hp <= 0) g.handleEnemyDeath(e);
                     }
                 });
             }
@@ -107,6 +113,10 @@ export class ShopSystem {
                 g.player.powerUps.shield.active = true;
                 g.player.powerUps.shield.timer = 10;
                 g.player.isInvincible = true;
+                if (g.isMultiplayer) {
+                    if (g.networkSystem.isHost) g.networkSystem.broadcast('POWERUP_APPLIED', { id: 'shield' });
+                    else g.networkSystem.sendToHost('POWERUP_APPLIED', { id: 'shield' });
+                }
             }
         },
         {
@@ -118,6 +128,10 @@ export class ShopSystem {
             onApply: (g) => {
                 g.player.powerUps.doubleFire.active = true;
                 g.player.powerUps.doubleFire.timer = 15;
+                if (g.isMultiplayer) {
+                    if (g.networkSystem.isHost) g.networkSystem.broadcast('POWERUP_APPLIED', { id: 'doubleFire' });
+                    else g.networkSystem.sendToHost('POWERUP_APPLIED', { id: 'doubleFire' });
+                }
             }
         },
         {
@@ -129,6 +143,10 @@ export class ShopSystem {
             onApply: (g) => {
                 g.player.powerUps.sword.active = true;
                 g.player.powerUps.sword.timer = 12;
+                if (g.isMultiplayer) {
+                    if (g.networkSystem.isHost) g.networkSystem.broadcast('POWERUP_APPLIED', { id: 'sword' });
+                    else g.networkSystem.sendToHost('POWERUP_APPLIED', { id: 'sword' });
+                }
             }
         },
         {
@@ -142,8 +160,12 @@ export class ShopSystem {
                 g.player.powerUps.glassCannon.timer = 10;
                 g.player.damageMult *= 2;
                 g.player.maxHp /= 2;
-                g.player.hp /= 2; // Explicitly halve current HP as per request
+                g.player.hp /= 2;
                 g.player.hp = Math.min(g.player.hp, g.player.maxHp);
+                if (g.isMultiplayer) {
+                    if (g.networkSystem.isHost) g.networkSystem.broadcast('POWERUP_APPLIED', { id: 'glassCannon' });
+                    else g.networkSystem.sendToHost('POWERUP_APPLIED', { id: 'glassCannon' });
+                }
             }
         }
     ];

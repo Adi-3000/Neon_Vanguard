@@ -287,6 +287,13 @@ export class NetworkSystem {
             window.dispatchEvent(new CustomEvent('networkPowerUpPause', { detail: data.payload }));
         }
 
+        if (data.type === 'POWERUP_APPLIED') {
+            window.dispatchEvent(new CustomEvent('networkPowerUpApplied', { detail: { ...data.payload, peerId } }));
+            if (this.isHost) {
+                this.broadcast('POWERUP_APPLIED', data.payload, [peerId]);
+            }
+        }
+
         if (data.type === 'TRIGGER_POWERUP') {
             window.dispatchEvent(new CustomEvent('networkTriggerPowerup', { detail: data.payload }));
         }

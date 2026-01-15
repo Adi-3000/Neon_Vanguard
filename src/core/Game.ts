@@ -197,6 +197,32 @@ export class Game {
             this.shopSystem.openPowerUpChoice();
         });
 
+        window.addEventListener('networkPowerUpApplied', (e: any) => {
+            const { id, peerId } = e.detail;
+            console.log(`[GAME] Powerup applied remote: ${id} from ${peerId}`);
+
+            const remote = this.remotePlayers.get(peerId);
+            const sourceX = remote ? remote.x : this.player.x;
+            const sourceY = remote ? remote.y : this.player.y;
+
+            if (id === 'meteor') {
+                this.triggerShake(0.8, 25);
+                this.enemies.forEach((enemy: any) => {
+                    const dist = Math.hypot(enemy.x - sourceX, enemy.y - sourceY);
+                    if (dist < 500) {
+                        if (!this.isMultiplayer || this.networkSystem.isHost) {
+                            enemy.hp -= 150;
+                            if (enemy.hp <= 0) this.handleEnemyDeath(enemy);
+                        }
+                        this.particleSystem.spawnExplosion(enemy.x, enemy.y, '#ff4400', 30);
+                    }
+                });
+            } else if (id === 'heal' && remote) {
+                remote.hp = remote.maxHp;
+                this.particleSystem.spawnExplosion(remote.x, remote.y, '#00ff00', 30);
+            }
+        });
+
         console.log('[GAME] Constructor complete');
     }
 
@@ -401,7 +427,11 @@ export class Game {
         // Gunner Dead Eye Input
         if (this.player.isAbilityActive && this.player.role === 'GUNNER' && !this.player.isDead) {
             this.timeScale = 0.1;
-            this.player.activeTimer -= dt * 9.0; // Fast decay for real-time feel
+            // Removed the extra multiplier to avoid "double-dipping" with Player.ts decrement
+            // This ensures it lasts exactly the intended 3 seconds in slow-mo
+            if (this.player.activeTimer > 0) {
+                // No extra decrement needed here since Player.update handles it
+            }
 
             // Handle Target Selection
             if (this.input.mouse.isDown) {
@@ -747,7 +777,7 @@ export class Game {
 
         switch (this.player.role) {
             case 'GUNNER':
-                this.player.activeTimer = 3.0; // Max time to targets
+                this.player.activeTimer = 4.0; // Increased to 4s to targets
                 this.player.markedTargets = [];
                 // Slow mo handled in update
                 break;
@@ -861,15 +891,15 @@ export class Game {
 
                         // Determine if we should keep going or stop
                         if (p.ownerRole === 'GIANT') {
-                            // Heavy knockback for primary target
-                            const gdx = e.x - p.x;
-                            const gdy = e.y - p.y;
-                            const gdist = Math.hypot(gdx, gdy) || 1;
+                            // Direct knockback along the line of fire (trajectory)
+                            const vDist = Math.hypot(p.vx, p.vy) || 1;
+                            const ndx = p.vx / vDist;
+                            const ndy = p.vy / vDist;
 
-                            // Only apply physics if allowed
+                            // Only apply physics if allowed (Host or Singleplayer)
                             if (!this.isMultiplayer || this.networkSystem.isHost) {
-                                e.x += (gdx / gdist) * 60;
-                                e.y += (gdy / gdist) * 60;
+                                e.x += ndx * 60;
+                                e.y += ndy * 60;
                             }
 
                             // Giant bullets splash to NEARBY enemies with high force
