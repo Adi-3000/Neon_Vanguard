@@ -539,7 +539,7 @@ export class MenuSystem {
         document.getElementById('btn-menu-back')!.onclick = () => this.showMainMenu();
     }
 
-    createClassCard(role: string, type: string, ability: string, color: string) {
+    createClassCard(role: string, type: string, _ability: string, color: string) {
         const isSmall = window.innerWidth < 600;
 
         let pickedById = null;

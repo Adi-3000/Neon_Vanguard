@@ -811,7 +811,7 @@ export class Game {
         }
     }
 
-    handleEnemyDeath(e: Enemy) {
+    handleEnemyDeath(e: Enemy, killerId?: string) {
         e.markedForDeletion = true;
 
         // Visuals
