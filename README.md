@@ -14,6 +14,7 @@
 ### ✨ Key Features
 
 - **🎮 Universal Controls:** Play on your desktop with Keyboard/Mouse or seamlessly on mobile with a responsive on-screen touch HUD.
+- **👥 Multiple Characters:** Choose between different unique characters, each bringing their own distinct gameplay style and visual flair.
 - **🌐 Network Multiplayer:** Powered by `PeerJS`, connect and play with friends online.
 - **🌊 Dynamic Wave Survival:** Survive escalating waves of unique enemies via the robust `WaveManager` system.
 - **🛒 Progression & Upgrades:** Access the in-game `ShopSystem` to purchase upgrades and equip yourself in the Arsenal.
