@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <!-- Glow filters -->
+    <filter id="glow-cyan" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glow-magenta" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Dark background -->
+  <rect width="120" height="120" rx="30" fill="#0B0B14" />
+  <rect width="116" height="116" x="2" y="2" rx="28" fill="none" stroke="#1A1A2E" stroke-width="2" />
+  
+  <!-- Outer rings -->
+  <circle cx="60" cy="62" r="42" fill="none" stroke="#ff0055" stroke-width="1.5" filter="url(#glow-magenta)" opacity="0.6"/>
+  <circle cx="60" cy="62" r="32" fill="none" stroke="#00ffff" stroke-width="1.5" filter="url(#glow-cyan)" opacity="0.4"/>
+  
+  <!-- Glowing triangle representing the Vanguard / Ship -->
+  <polygon points="60,24 95,88 60,70 25,88" fill="rgba(0, 255, 255, 0.1)" stroke="#00ffff" stroke-width="3" filter="url(#glow-cyan)"/>
+  
+  <!-- Energy core -->
+  <circle cx="60" cy="62" r="7" fill="#ff0055" filter="url(#glow-magenta)"/>
+  <!-- Bright center -->
+  <circle cx="60" cy="62" r="3" fill="#ffffff" />
+</svg>
